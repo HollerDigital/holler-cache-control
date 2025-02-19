@@ -1,0 +1,14 @@
+{
+    "name": "hollerdigital/holler-cache-control",
+    "description": "WordPress plugin for controlling various caching layers",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "autoload": {
+        "psr-4": {
+            "HollerCacheControl\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=7.2"
+    }
+}
