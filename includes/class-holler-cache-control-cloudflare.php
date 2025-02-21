@@ -5,7 +5,26 @@
  * @package HollerCacheControl
  */
 
-class Holler_Cache_Control_Cloudflare {
+namespace Holler\CacheControl\Cache;
+
+class Cloudflare {
+    /**
+     * Initialize Cloudflare cache headers
+     */
+    public static function init() {
+        if (self::are_credentials_set()) {
+            add_action('send_headers', array(__CLASS__, 'add_cache_headers'));
+        }
+    }
+
+    /**
+     * Add Cloudflare-specific cache headers
+     */
+    public static function add_cache_headers() {
+        if (!is_user_logged_in()) {
+            header('Cache-Control: public, max-age=31536000');
+        }
+    }
 
     /**
      * Get Cloudflare credentials with priority order: Constants > Database > Empty
@@ -46,6 +65,23 @@ class Holler_Cache_Control_Cloudflare {
     public static function are_credentials_set() {
         $credentials = self::get_credentials();
         return !empty($credentials['email']) && !empty($credentials['api_key']) && !empty($credentials['zone_id']);
+    }
+
+    /**
+     * Get Cloudflare configuration status
+     *
+     * @return array Status information
+     */
+    public static function get_status() {
+        $credentials = self::get_credentials();
+        $is_configured = !empty($credentials['email']) && !empty($credentials['api_key']) && !empty($credentials['zone_id']);
+
+        return array(
+            'enabled' => true,
+            'configured' => $is_configured,
+            'status' => $is_configured ? 'active' : 'not_configured',
+            'message' => $is_configured ? __('Cloudflare is properly configured.', 'holler-cache-control') : __('Cloudflare credentials are not configured.', 'holler-cache-control')
+        );
     }
 
     /**

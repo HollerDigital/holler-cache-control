@@ -88,8 +88,7 @@ class Plugin {
         $this->loader->add_action('wp_ajax_holler_purge_cloudflare', $admin, 'handle_purge_cache');
         $this->loader->add_action('wp_ajax_holler_purge_cloudflare_apo', $admin, 'handle_purge_cache');
 
-        // Enqueue admin scripts and styles
-        $this->loader->add_action('admin_enqueue_scripts', $admin, 'enqueue_styles');
+        // Enqueue admin scripts
         $this->loader->add_action('admin_enqueue_scripts', $admin, 'enqueue_scripts');
     }
 

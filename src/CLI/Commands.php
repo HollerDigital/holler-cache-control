@@ -40,13 +40,13 @@ class Commands {
                 $result = $this->tools->purge_all_caches_on_update();
                 break;
             case 'nginx':
-                $result = \HollerCacheControl\Cache\Nginx::purge();
+                $result = \HollerCacheControl\Cache\Nginx::purge_cache();
                 break;
             case 'redis':
-                $result = \HollerCacheControl\Cache\Redis::purge();
+                $result = \HollerCacheControl\Cache\Redis::purge_cache();
                 break;
             case 'cloudflare':
-                $result = \HollerCacheControl\Cache\Cloudflare::purge();
+                $result = \HollerCacheControl\Cache\Cloudflare::purge_cache();
                 break;
             case 'cloudflare-apo':
                 $result = \HollerCacheControl\Cache\CloudflareAPO::purge();

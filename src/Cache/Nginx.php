@@ -305,6 +305,6 @@ class Nginx {
      * @param string $message
      */
     private static function log_error($message) {
-        error_log('[Holler Cache Control] ' . $message);
+        // Removed error logging
     }
 }

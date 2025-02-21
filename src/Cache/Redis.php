@@ -26,7 +26,7 @@ class Redis {
                 return $redis;
             }
         } catch (\Exception $e) {
-            //error_log('Redis Connection Error: ' . $e->getMessage());
+            // Removed error_log call
         }
         return null;
     }

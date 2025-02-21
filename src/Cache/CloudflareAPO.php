@@ -9,9 +9,7 @@ class CloudflareAPO extends Cloudflare {
      * Log error message
      */
     protected static function log_error($message) {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CloudflareAPO] ' . $message);
-        }
+        // Removed error logging
     }
 
     /**

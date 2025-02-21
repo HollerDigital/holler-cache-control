@@ -387,7 +387,6 @@ class Cloudflare {
             $result['message'] = __('Cloudflare proxy enabled for domain', 'holler-cache-control');
 
         } catch (\Exception $e) {
-            error_log('Cloudflare Proxy Enable Error: ' . $e->getMessage());
             $result['message'] = $e->getMessage();
         }
 
@@ -509,7 +508,6 @@ class Cloudflare {
             $result['message'] = __('APO enabled successfully', 'holler-cache-control');
 
         } catch (\Exception $e) {
-            error_log('Cloudflare APO Enable Error: ' . $e->getMessage());
             $result['message'] = $e->getMessage();
         }
 
@@ -613,13 +611,11 @@ class Cloudflare {
                 );
 
                 if (is_wp_error($response)) {
-                    error_log("Failed to update {$setting}: " . $response->get_error_message());
                     continue;
                 }
 
                 $body = json_decode(wp_remote_retrieve_body($response), true);
                 if (empty($body) || !isset($body['success']) || !$body['success']) {
-                    error_log("Failed to update {$setting}: " . wp_remote_retrieve_body($response));
                     continue;
                 }
             }
@@ -648,11 +644,11 @@ class Cloudflare {
             );
 
             if (is_wp_error($response)) {
-                error_log('Failed to enable APO: ' . $response->get_error_message());
+                // Ignore APO errors
             } else {
                 $body = json_decode(wp_remote_retrieve_body($response), true);
                 if (empty($body) || !isset($body['success']) || !$body['success']) {
-                    error_log('Failed to enable APO: ' . wp_remote_retrieve_body($response));
+                    // Ignore APO errors
                 }
             }
 
@@ -660,7 +656,6 @@ class Cloudflare {
             $result['message'] = __('Zone settings updated successfully', 'holler-cache-control');
 
         } catch (\Exception $e) {
-            error_log('Cloudflare Zone Settings Update Error: ' . $e->getMessage());
             $result['message'] = $e->getMessage();
         }
 
@@ -959,7 +954,6 @@ class Cloudflare {
             $result['records'] = $body['result'];
 
         } catch (\Exception $e) {
-            error_log('Cloudflare DNS Records Error: ' . $e->getMessage());
             $result['message'] = $e->getMessage();
         }
 
