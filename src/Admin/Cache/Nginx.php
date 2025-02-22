@@ -100,12 +100,69 @@ class Nginx {
                 );
             }
 
-            // Use GridPane's action hook to purge cache
-            do_action('rt_nginx_helper_purge_all');
-            
+            // Try GridPane's action hook first
+            if (has_action('rt_nginx_helper_purge_all')) {
+                do_action('rt_nginx_helper_purge_all');
+                return array(
+                    'success' => true,
+                    'message' => __('Page cache purged via GridPane.', 'holler-cache-control')
+                );
+            }
+
+            // Fallback: Try to clear cache directly
+            $cache_path = '/var/run/nginx-cache';
+            if (is_dir($cache_path)) {
+                // Use shell_exec to clear cache files
+                $result = shell_exec('rm -rf ' . escapeshellarg($cache_path . '/*'));
+                if ($result !== false) {
+                    return array(
+                        'success' => true,
+                        'message' => __('Page cache purged directly.', 'holler-cache-control')
+                    );
+                }
+            }
+
+            // If Redis is being used for page caching
+            if ($status['type'] === 'redis') {
+                if (class_exists('Redis')) {
+                    try {
+                        $redis = new \Redis();
+                        $redis->connect(
+                            defined('RT_WP_NGINX_HELPER_REDIS_HOSTNAME') ? RT_WP_NGINX_HELPER_REDIS_HOSTNAME : '127.0.0.1',
+                            defined('RT_WP_NGINX_HELPER_REDIS_PORT') ? RT_WP_NGINX_HELPER_REDIS_PORT : 6379
+                        );
+                        
+                        if (defined('RT_WP_NGINX_HELPER_REDIS_PASSWORD') && RT_WP_NGINX_HELPER_REDIS_PASSWORD) {
+                            $redis->auth(RT_WP_NGINX_HELPER_REDIS_PASSWORD);
+                        }
+                        
+                        if (defined('RT_WP_NGINX_HELPER_REDIS_DATABASE')) {
+                            $redis->select(RT_WP_NGINX_HELPER_REDIS_DATABASE);
+                        }
+
+                        $prefix = defined('RT_WP_NGINX_HELPER_REDIS_PREFIX') ? RT_WP_NGINX_HELPER_REDIS_PREFIX : '';
+                        if ($prefix) {
+                            $keys = $redis->keys($prefix . '*');
+                            if (!empty($keys)) {
+                                $redis->del($keys);
+                            }
+                        } else {
+                            $redis->flushDb();
+                        }
+
+                        return array(
+                            'success' => true,
+                            'message' => __('Redis page cache purged directly.', 'holler-cache-control')
+                        );
+                    } catch (\Exception $e) {
+                        error_log('Failed to clear Redis page cache: ' . $e->getMessage());
+                    }
+                }
+            }
+
             return array(
-                'success' => true,
-                'message' => __('Page cache purged successfully.', 'holler-cache-control')
+                'success' => false,
+                'message' => __('Failed to purge page cache. No valid cache clearing method available.', 'holler-cache-control')
             );
 
         } catch (\Exception $e) {

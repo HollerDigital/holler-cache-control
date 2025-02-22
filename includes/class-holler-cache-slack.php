@@ -161,26 +161,36 @@ class Slack {
 
             // Try each cache type separately to get detailed errors
             $errors = [];
+
+            // 1. PHP OPcache
+            $result = \Holler\CacheControl\Admin\Cache\CacheManager::purge_opcache();
+            if (!$result['success']) {
+                $errors[] = "PHP OPcache: " . $result['message'];
+            }
+            sleep(5); // Wait 5 seconds
             
-            // Redis Object Cache
+            // 2. Redis Object Cache
             $result = \Holler\CacheControl\Admin\Cache\Redis::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Redis Object Cache: " . $result['message'];
             }
+            sleep(5); // Wait 5 seconds
             
-            // Redis Page Cache (Nginx)
+            // 3. Redis Page Cache (Nginx)
             $result = \Holler\CacheControl\Admin\Cache\Nginx::purge_cache();
             if (!$result['success']) {
-                $errors[] = "Redis Page Cache: " . $result['message'];
+                $errors[] = "Page Cache: " . $result['message'];
             }
+            sleep(5); // Wait 5 seconds
             
-            // Cloudflare
+            // 4. Cloudflare
             $result = \Holler\CacheControl\Admin\Cache\Cloudflare::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Cloudflare: " . $result['message'];
             }
+            sleep(5); // Wait 5 seconds
 
-            // Cloudflare APO
+            // 5. Cloudflare APO
             $result = \Holler\CacheControl\Admin\Cache\CloudflareAPO::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Cloudflare APO: " . $result['message'];
@@ -203,35 +213,32 @@ class Slack {
                     'response_type' => 'in_channel',
                     'text' => "✅ Cache cleared successfully for `{$target_site}`!\n" .
                              "_Task ID: {$task_id}_\n" .
-                             "_Started: " . wp_date('g:i:s A T', strtotime($task['start_time'])) . "_\n" .
-                             "_Completed: " . wp_date('g:i:s A T', strtotime($task['end_time'])) . "_"
+                             "Started: " . date('g:i:s A T', strtotime($task['start_time'])) . "\n" .
+                             "Completed: " . date('g:i:s A T', strtotime($task['end_time']))
                 ])
             ]);
 
         } catch (\Exception $e) {
-            if (isset($task)) {
+            // Update status
+            if ($task) {
                 $task['status'] = 'failed';
                 $task['error'] = $e->getMessage();
                 $task['end_time'] = current_time('mysql');
                 set_transient("holler_task_{$task_id}", $task, HOUR_IN_SECONDS);
-
-                // Send failure message
-                if (!empty($task['response_url'])) {
-                    wp_remote_post($task['response_url'], [
-                        'headers' => ['Content-Type' => 'application/json'],
-                        'body' => json_encode([
-                            'response_type' => 'in_channel',
-                            'text' => "❌ Cache clear failed for `{$target_site}`\n" .
-                                     "_Task ID: {$task_id}_\n" .
-                                     "_Error:_\n" . 
-                                     $e->getMessage() . "\n\n" .
-                                     "_Started: " . wp_date('g:i:s A T', strtotime($task['start_time'])) . "_\n" .
-                                     "_Failed: " . wp_date('g:i:s A T', strtotime($task['end_time'])) . "_"
-                        ])
-                    ]);
-                }
             }
-            error_log("Holler Cache Task Error ({$task_id}): " . $e->getMessage());
+
+            // Send error message
+            if (isset($task['response_url'])) {
+                wp_remote_post($task['response_url'], [
+                    'headers' => ['Content-Type' => 'application/json'],
+                    'body' => json_encode([
+                        'response_type' => 'in_channel',
+                        'text' => "❌ Failed to clear cache for `{$target_site}`\n" .
+                                "_Task ID: {$task_id}_\n" .
+                                "Error: " . $e->getMessage()
+                    ])
+                ]);
+            }
         }
     }
 
