@@ -35,38 +35,24 @@ class Tools {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
 
-        // Initialize AJAX handlers
-        add_action('admin_init', array($this, 'init_ajax_handlers'));
+        // Add hooks for cache purging
         add_action('admin_init', array($this, 'register_settings'));
-        add_action('admin_init', array($this, 'handle_purge_cache'));
-
-        // Add admin menu
         add_action('admin_menu', array($this, 'add_plugin_admin_menu'));
-
-        // Add settings link to plugins page
-        add_filter('plugin_action_links_' . plugin_basename(plugin_dir_path(__FILE__) . $this->plugin_name . '.php'), array($this, 'add_action_links'));
-
-        // Add admin bar menu - use high priority to ensure our formatting
-        add_action('admin_bar_menu', array($this, 'admin_bar_menu'), 9999);
-        add_action('wp_head', array($this, 'admin_bar_styles'));
+        add_action('admin_bar_menu', array($this, 'admin_bar_menu'), 100);
         add_action('admin_head', array($this, 'admin_bar_styles'));
-
-        // Add scripts and styles
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_styles'));
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
-
-        // Add notice container to footer
         add_action('admin_footer', array($this, 'add_notice_container'));
 
+        // Initialize AJAX handlers
+        $this->init_ajax_handlers();
+
+        // Add hooks for automatic cache purging
+        $this->add_cache_purging_hooks();
+
         // Initialize HTTPS filters
-        add_action('init', array($this, 'init_https_filters'));
+        $this->init_https_filters();
 
-        // Add cache purging hooks
-        add_action('init', array($this, 'add_cache_purging_hooks'));
-
-        // Handle plugin activation/deactivation
-        add_action('activate_' . $this->plugin_name . '/' . $this->plugin_name . '.php', array($this, 'handle_plugin_state_change'));
-        add_action('deactivate_' . $this->plugin_name . '/' . $this->plugin_name . '.php', array($this, 'handle_plugin_state_change'));
+        // Remove old menu items
+        add_action('admin_menu', array($this, 'remove_old_menu_items'), 999);
     }
 
     /**
@@ -108,20 +94,26 @@ class Tools {
      * Add admin bar menu
      */
     public function admin_bar_menu($wp_admin_bar) {
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-
         // Get settings
         $settings = get_option('holler_cache_control_settings', array());
-        $hide_nginx = !empty($settings['hide_nginx_purge_button']);
-        $hide_redis = !empty($settings['hide_redis_purge_button']);
+        $visibility = get_option('holler_cache_control_visibility', array());
 
-        // Get cache statuses
-        $cloudflare_status = \Holler\CacheControl\Admin\Cache\Cloudflare::get_status();
-        $cloudflare_apo_status = \Holler\CacheControl\Admin\Cache\CloudflareAPO::get_status();
-        $nginx_status = \Holler\CacheControl\Admin\Cache\Nginx::get_status();
-        $redis_status = \Holler\CacheControl\Admin\Cache\Redis::get_status();
+        // Check if user's role is excluded
+        if (!is_super_admin()) {
+            $current_user = wp_get_current_user();
+            $user_roles = $current_user->roles;
+            $excluded_roles = !empty($visibility['excluded_roles']) ? $visibility['excluded_roles'] : array();
+
+            foreach ($user_roles as $role) {
+                if (in_array($role, $excluded_roles)) {
+                    return; // Don't show menu for excluded roles
+                }
+            }
+        }
+
+        // Get hide button settings
+        $hide_nginx = !empty($visibility['hide_nginx_purge']);
+        $hide_redis = !empty($visibility['hide_redis_purge']);
 
         // Add main cache control node
         $wp_admin_bar->add_node(array(
@@ -133,188 +125,38 @@ class Tools {
             )
         ));
 
-        // Add cache status submenu
-        $wp_admin_bar->add_node(array(
-            'parent' => 'holler-cache-control',
-            'id' => 'holler-cache-status',
-            'title' => 'Cache Status',
-            'meta' => array(
-                'class' => 'menupop'
-            )
-        ));
-
-        // Helper function to get status indicator
-        $get_status_text = function($status, $name) {
-            $icon = $status['status'] === 'active' ? '🟢' : '🔴';
-            return sprintf('%s %s', $icon, $name);
-        };
-
-        // Add individual cache status items
+        // Add purge buttons if not hidden
         if (!$hide_nginx) {
             $wp_admin_bar->add_node(array(
-                'parent' => 'holler-cache-status',
-                'id' => 'holler-nginx-status',
-                'title' => $get_status_text($nginx_status, 'Nginx Cache'),
+                'id' => 'holler-purge-nginx',
+                'title' => 'Purge Page Cache',
+                'parent' => 'holler-cache-control',
                 'href' => '#',
                 'meta' => array(
-                    'class' => 'holler-cache-status-item',
-                    'onclick' => 'return false;'
+                    'class' => 'holler-purge-nginx'
                 )
             ));
         }
 
         if (!$hide_redis) {
             $wp_admin_bar->add_node(array(
-                'parent' => 'holler-cache-status',
-                'id' => 'holler-redis-status',
-                'title' => $get_status_text($redis_status, 'Redis Cache'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'holler-cache-status-item',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        if ($cloudflare_status['status'] !== 'not_configured') {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-cache-status',
-                'id' => 'holler-cloudflare-status',
-                'title' => $get_status_text($cloudflare_status, 'Cloudflare Cache'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'holler-cache-status-item',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        if ($cloudflare_apo_status['status'] !== 'not_configured') {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-cache-status',
-                'id' => 'holler-cloudflare-apo-status',
-                'title' => $get_status_text($cloudflare_apo_status, 'Cloudflare APO'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'holler-cache-status-item',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        // Add separator
-        $wp_admin_bar->add_node(array(
-            'parent' => 'holler-cache-control',
-            'id' => 'holler-cache-separator-1',
-            'title' => '<span style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></span>',
-            'meta' => array(
-                'html' => true
-            )
-        ));
-
-        // Add purge cache submenu
-        $wp_admin_bar->add_node(array(
-            'parent' => 'holler-cache-control',
-            'id' => 'holler-purge-cache',
-            'title' => __('Purge Cache', 'holler-cache-control')
-        ));
-
-        // Add purge all caches button
-        $wp_admin_bar->add_node(array(
-            'parent' => 'holler-purge-cache',
-            'id' => 'holler-purge-all',
-            'title' => __('Purge All Caches', 'holler-cache-control'),
-            'href' => '#',
-            'meta' => array(
-                'class' => 'purge-cache',
-                'onclick' => 'return false;'
-            )
-        ));
-
-        // Add individual purge buttons
-        if ($nginx_status['status'] === 'active' && !$hide_nginx) {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-purge-cache',
-                'id' => 'holler-purge-nginx',
-                'title' => __('Purge Nginx Cache', 'holler-cache-control'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'purge-cache',
-                    'onclick' => 'return false;'
-                )
-            ));
-
-            // Remove other plugins' Nginx purge buttons
-            $wp_admin_bar->remove_node('nginx-cache');
-            $wp_admin_bar->remove_node('nginx_cache');
-            $wp_admin_bar->remove_node('purge-cache');
-        }
-
-        if ($redis_status['status'] === 'active' && !$hide_redis) {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-purge-cache',
                 'id' => 'holler-purge-redis',
-                'title' => __('Purge Redis Cache', 'holler-cache-control'),
+                'title' => 'Purge Object Cache',
+                'parent' => 'holler-cache-control',
                 'href' => '#',
                 'meta' => array(
-                    'class' => 'purge-cache',
-                    'onclick' => 'return false;'
-                )
-            ));
-
-            // Remove other plugins' Redis purge buttons
-            $wp_admin_bar->remove_node('redis-cache');
-            $wp_admin_bar->remove_node('redis_cache');
-        }
-
-        if ($cloudflare_status['status'] === 'active') {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-purge-cache',
-                'id' => 'holler-purge-cloudflare',
-                'title' => __('Purge Cloudflare Cache', 'holler-cache-control'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'purge-cache',
-                    'onclick' => 'return false;'
+                    'class' => 'holler-purge-redis'
                 )
             ));
         }
-
-        if ($cloudflare_apo_status['status'] === 'active') {
-            $wp_admin_bar->add_node(array(
-                'parent' => 'holler-purge-cache',
-                'id' => 'holler-purge-cloudflare-apo',
-                'title' => __('Purge Cloudflare APO', 'holler-cache-control'),
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'purge-cache',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        // Add separator
-        $wp_admin_bar->add_node(array(
-            'parent' => 'holler-cache-control',
-            'id' => 'holler-cache-separator-2',
-            'title' => '<span style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></span>'
-        ));
 
         // Add settings link
         $wp_admin_bar->add_node(array(
-            'parent' => 'holler-cache-control',
             'id' => 'holler-cache-settings',
-            'title' => __('Settings', 'holler-cache-control'),
+            'title' => 'Settings',
+            'parent' => 'holler-cache-control',
             'href' => admin_url('options-general.php?page=holler-cache-control')
         ));
-
-        // Remove other plugins' cache purge menus if we're handling that cache type
-        if ($nginx_status['status'] === 'active' && !$hide_nginx) {
-            remove_action('admin_bar_menu', 'nginx_cache_purge_admin_bar', 100);
-        }
-        if ($redis_status['status'] === 'active' && !$hide_redis) {
-            remove_action('admin_bar_menu', 'redis_cache_purge_admin_bar', 100);
-        }
     }
 
     /**
@@ -401,8 +243,12 @@ class Tools {
         }
         
         // Add AJAX actions
-        add_action('wp_ajax_holler_purge_cache', array($this->ajax_handler, 'handle_purge_cache'));
-        add_action('wp_ajax_holler_cache_control_status', array($this->ajax_handler, 'handle_cache_status'));
+        add_action('wp_ajax_holler_cache_status', array($this->ajax_handler, 'handle_cache_status'));
+        add_action('wp_ajax_holler_purge_all', array($this->ajax_handler, 'handle_purge_cache'));
+        add_action('wp_ajax_holler_purge_nginx', array($this->ajax_handler, 'handle_purge_cache'));
+        add_action('wp_ajax_holler_purge_redis', array($this->ajax_handler, 'handle_purge_cache'));
+        add_action('wp_ajax_holler_purge_cloudflare', array($this->ajax_handler, 'handle_purge_cache'));
+        add_action('wp_ajax_holler_purge_cloudflare_apo', array($this->ajax_handler, 'handle_purge_cache'));
     }
 
     /**
@@ -856,100 +702,155 @@ class Tools {
      * Register plugin settings
      */
     public function register_settings() {
-        // Register existing settings
-        // ... existing settings ...
-
-        // Register capability setting
+        // Register visibility settings
         register_setting(
-            'holler_cache_control',
-            'holler_cache_control_settings',
+            'holler_cache_control_settings',  // Option group
+            'holler_cache_control_visibility', // Option name
             array(
                 'type' => 'object',
-                'description' => 'Holler Cache Control Settings',
-                'sanitize_callback' => array($this, 'sanitize_settings'),
+                'description' => 'Holler Cache Control Visibility Settings',
+                'sanitize_callback' => array($this, 'sanitize_visibility_settings'),
                 'show_in_rest' => false,
                 'default' => array(
-                    'required_capability' => 'manage_options',
-                    'hide_nginx_purge_button' => false,
-                    'hide_redis_purge_button' => false,
-                    'hide_cloudflare_purge_button' => false,
-                    'hide_cloudflare_apo_purge_button' => false
+                    'hide_nginx_helper' => false,
+                    'hide_redis_cache' => false,
+                    'hide_cloudflare' => false,
+                    'hide_nginx_purge' => false,
+                    'hide_redis_purge' => false,
+                    'excluded_roles' => array()
                 )
             )
         );
 
-        // Add settings section for visibility
+        // Add settings sections
         add_settings_section(
             'holler_cache_control_visibility',
-            'Plugin Visibility',
+            'Plugin & Feature Visibility',
             array($this, 'render_visibility_section'),
             'holler-cache-control'
         );
 
-        // Add capability field
+        // Add plugin visibility fields
         add_settings_field(
-            'required_capability',
-            'Required Capability',
-            array($this, 'render_capability_field'),
+            'plugin_visibility',
+            'Hide Plugins',
+            array($this, 'render_plugin_visibility_field'),
+            'holler-cache-control',
+            'holler_cache_control_visibility'
+        );
+
+        // Add admin bar fields
+        add_settings_field(
+            'admin_bar_visibility',
+            'Hide Admin Bar Features',
+            array($this, 'render_admin_bar_visibility_field'),
+            'holler-cache-control',
+            'holler_cache_control_visibility'
+        );
+
+        // Add role exclusion field
+        add_settings_field(
+            'excluded_roles',
+            'Hide From User Roles',
+            array($this, 'render_role_exclusion_field'),
             'holler-cache-control',
             'holler_cache_control_visibility'
         );
     }
 
     /**
+     * Sanitize visibility settings
+     */
+    public function sanitize_visibility_settings($input) {
+        $sanitized = array(
+            'hide_nginx_helper' => !empty($input['hide_nginx_helper']),
+            'hide_redis_cache' => !empty($input['hide_redis_cache']),
+            'hide_cloudflare' => !empty($input['hide_cloudflare']),
+            'hide_nginx_purge' => !empty($input['hide_nginx_purge']),
+            'hide_redis_purge' => !empty($input['hide_redis_purge']),
+            'excluded_roles' => array()
+        );
+
+        // Sanitize excluded roles
+        if (!empty($input['excluded_roles']) && is_array($input['excluded_roles'])) {
+            $all_roles = array_keys(wp_roles()->get_names());
+            $sanitized['excluded_roles'] = array_intersect($input['excluded_roles'], $all_roles);
+        }
+
+        return $sanitized;
+    }
+
+    /**
      * Render the visibility section description
      */
     public function render_visibility_section() {
-        echo '<p>Control who can see and use the plugin.</p>';
+        echo '<p>Control the visibility of cache plugins and features for different user roles.</p>';
     }
 
     /**
-     * Render the capability field
+     * Render plugin visibility checkboxes
      */
-    public function render_capability_field() {
-        $settings = get_option('holler_cache_control_settings', array());
-        $capability = !empty($settings['required_capability']) ? $settings['required_capability'] : 'manage_options';
+    public function render_plugin_visibility_field() {
+        $settings = get_option('holler_cache_control_visibility', array());
         
-        $capabilities = array(
-            'manage_options' => 'Administrator (manage_options)',
-            'edit_pages' => 'Editor (edit_pages)',
-            'edit_posts' => 'Author (edit_posts)',
-            'edit_published_posts' => 'Contributor (edit_published_posts)'
+        $plugins = array(
+            'hide_nginx_helper' => 'Nginx Helper',
+            'hide_redis_cache' => 'Redis Object Cache',
+            'hide_cloudflare' => 'Cloudflare'
         );
 
-        echo '<select name="holler_cache_control_settings[required_capability]">';
-        foreach ($capabilities as $cap => $label) {
+        foreach ($plugins as $key => $label) {
             printf(
-                '<option value="%s" %s>%s</option>',
-                esc_attr($cap),
-                selected($capability, $cap, false),
+                '<label style="display: block; margin-bottom: 8px;"><input type="checkbox" name="holler_cache_control_visibility[%s]" value="1" %s> %s</label>',
+                esc_attr($key),
+                checked(!empty($settings[$key]), true, false),
                 esc_html($label)
             );
         }
-        echo '</select>';
-        echo '<p class="description">Users must have this capability to see and use the plugin. Default: Administrator</p>';
+        echo '<p class="description">Selected plugins will be hidden from the plugins list.</p>';
     }
 
     /**
-     * Sanitize settings
+     * Render admin bar visibility checkboxes
      */
-    public function sanitize_settings($input) {
-        $sanitized = array();
+    public function render_admin_bar_visibility_field() {
+        $settings = get_option('holler_cache_control_visibility', array());
         
-        // Sanitize capability
-        if (!empty($input['required_capability'])) {
-            $sanitized['required_capability'] = sanitize_text_field($input['required_capability']);
-        } else {
-            $sanitized['required_capability'] = 'manage_options';
+        $features = array(
+            'hide_nginx_purge' => 'Page Cache Purge Button',
+            'hide_redis_purge' => 'Object Cache Purge Button'
+        );
+
+        foreach ($features as $key => $label) {
+            printf(
+                '<label style="display: block; margin-bottom: 8px;"><input type="checkbox" name="holler_cache_control_visibility[%s]" value="1" %s> %s</label>',
+                esc_attr($key),
+                checked(!empty($settings[$key]), true, false),
+                esc_html($label)
+            );
         }
+        echo '<p class="description">Selected features will be hidden from the admin bar menu.</p>';
+    }
+
+    /**
+     * Render role exclusion checkboxes
+     */
+    public function render_role_exclusion_field() {
+        $settings = get_option('holler_cache_control_visibility', array());
+        $excluded_roles = !empty($settings['excluded_roles']) ? $settings['excluded_roles'] : array();
         
-        // Sanitize other settings
-        $sanitized['hide_nginx_purge_button'] = !empty($input['hide_nginx_purge_button']);
-        $sanitized['hide_redis_purge_button'] = !empty($input['hide_redis_purge_button']);
-        $sanitized['hide_cloudflare_purge_button'] = !empty($input['hide_cloudflare_purge_button']);
-        $sanitized['hide_cloudflare_apo_purge_button'] = !empty($input['hide_cloudflare_apo_purge_button']);
+        // Get all WordPress roles
+        $roles = wp_roles()->get_names();
         
-        return $sanitized;
+        foreach ($roles as $role_key => $role_name) {
+            printf(
+                '<label style="display: block; margin-bottom: 8px;"><input type="checkbox" name="holler_cache_control_visibility[excluded_roles][]" value="%s" %s> %s</label>',
+                esc_attr($role_key),
+                checked(in_array($role_key, $excluded_roles), true, false),
+                esc_html($role_name)
+            );
+        }
+        echo '<p class="description">Selected roles will not see the hidden plugins and features. Note: Super Admin will always see everything.</p>';
     }
 
     /**
@@ -1095,52 +996,9 @@ class Tools {
     }
 
     /**
-     * Add plugin settings page
+     * Remove old menu items
      */
-    public function add_settings_page() {
-        add_options_page(
-            'Holler Cache Control',
-            'Cache Control',
-            'manage_options',
-            'holler-cache-control',
-            array($this, 'render_settings_page')
-        );
-    }
-
-    /**
-     * Render settings page
-     */
-    public function render_settings_page() {
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-
-        // Save settings if form was submitted
-        if (isset($_POST['submit'])) {
-            check_admin_referer('holler_cache_control_settings');
-            
-            $settings = array();
-            if (isset($_POST['holler_cache_control_settings'])) {
-                $settings = $this->sanitize_settings($_POST['holler_cache_control_settings']);
-                update_option('holler_cache_control_settings', $settings);
-            }
-            
-            echo '<div class="notice notice-success"><p>Settings saved.</p></div>';
-        }
-
-        // Get current settings
-        $settings = get_option('holler_cache_control_settings', array());
-        ?>
-        <div class="wrap">
-            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
-            <form action="" method="post">
-                <?php
-                settings_fields('holler_cache_control');
-                do_settings_sections('holler-cache-control');
-                submit_button('Save Settings');
-                ?>
-            </form>
-        </div>
-        <?php
+    public function remove_old_menu_items() {
+        remove_submenu_page('options-general.php', 'holler-cache-control');
     }
 }

@@ -106,6 +106,7 @@ class HollerCacheControl {
      * Load the required dependencies for this plugin.
      */
     private function load_dependencies() {
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/helper-functions.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-holler-cache-control-loader.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'src/Admin/Tools.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'src/Admin/Cache/AjaxHandler.php';
@@ -128,12 +129,16 @@ class HollerCacheControl {
      */
     private function define_admin_hooks() {
         $plugin_admin = new \Holler\CacheControl\Admin\Tools($this->get_plugin_name(), $this->get_version());
-        $plugin_slack = new \Holler\CacheControl\Admin\Slack($this->get_plugin_name(), $this->get_version());
 
-        // Admin hooks
-        $this->loader->add_action('admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts');
-        $this->loader->add_action('admin_menu', $plugin_admin, 'add_plugin_admin_menu');
+        // Add menu items
+        $this->loader->add_action('admin_menu', $plugin_admin, 'remove_old_menu_items', 999);
+        $this->loader->add_action('admin_init', $plugin_admin, 'register_settings');
         $this->loader->add_action('admin_bar_menu', $plugin_admin, 'admin_bar_menu', 100);
+        $this->loader->add_action('admin_head', $plugin_admin, 'admin_bar_styles');
+
+        // Add AJAX handlers
+        $this->loader->add_action('wp_ajax_holler_purge_cache', $plugin_admin, 'handle_purge_cache_ajax');
+        $this->loader->add_action('wp_ajax_holler_purge_all_caches', $plugin_admin, 'handle_purge_all_caches_ajax');
     }
 
     /**

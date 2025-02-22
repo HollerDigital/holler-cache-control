@@ -75,14 +75,12 @@ class Plugin {
      * @access   private
      */
     private function define_admin_hooks() {
-        $admin = new \HollerCacheControl\Admin\Tools($this->get_plugin_name(), $this->get_version());
+        $admin = new \HollerCacheControl\Admin\Tools();
 
-        // Add menu items
-        $this->loader->add_action('admin_menu', $admin, 'add_plugin_admin_menu');
-        $this->loader->add_action('admin_bar_menu', $admin, 'admin_bar_menu', 9999);
-
-        // Add admin bar styles
-        $this->loader->add_action('wp_head', $admin, 'admin_bar_styles');
+        // Add admin menu items
+        $this->loader->add_action('admin_menu', $admin, 'remove_old_menu_items', 999); // Run after other menu items are added
+        $this->loader->add_action('admin_init', $admin, 'register_settings');
+        $this->loader->add_action('admin_bar_menu', $admin, 'add_admin_bar_menu', 100);
         $this->loader->add_action('admin_head', $admin, 'admin_bar_styles');
 
         // Register settings
@@ -145,20 +143,48 @@ class Plugin {
     }
 
     /**
-     * Hide plugin from plugins list for users without required capability
+     * Hide related cache plugins from plugins list based on settings and user role
      *
      * @param array $plugins Array of plugins
      * @return array Modified array of plugins
      */
     public function hide_plugin_from_list($plugins) {
-        // Get plugin settings
-        $settings = get_option('holler_cache_control_settings', array());
-        $required_capability = !empty($settings['required_capability']) ? $settings['required_capability'] : 'manage_options';
+        // Super Admin can always see everything
+        if (is_super_admin()) {
+            return $plugins;
+        }
 
-        // If user doesn't have the required capability, hide the plugin
-        if (!current_user_can($required_capability)) {
-            if (isset($plugins['holler-cache-control/holler-cache-control.php'])) {
-                unset($plugins['holler-cache-control/holler-cache-control.php']);
+        // Get visibility settings
+        $settings = get_option('holler_cache_control_visibility', array());
+        
+        // Get current user's roles
+        $current_user = wp_get_current_user();
+        $user_roles = $current_user->roles;
+
+        // Check if user's role is excluded
+        $excluded_roles = !empty($settings['excluded_roles']) ? $settings['excluded_roles'] : array();
+        $should_hide = false;
+
+        foreach ($user_roles as $role) {
+            if (in_array($role, $excluded_roles)) {
+                $should_hide = true;
+                break;
+            }
+        }
+
+        if ($should_hide) {
+            // Map settings to plugin files
+            $plugin_map = array(
+                'hide_nginx_helper' => 'nginx-helper/nginx-helper.php',
+                'hide_redis_cache' => 'redis-cache/redis-cache.php',
+                'hide_cloudflare' => 'cloudflare/cloudflare.php'
+            );
+
+            // Hide plugins based on settings
+            foreach ($plugin_map as $setting => $plugin_file) {
+                if (!empty($settings[$setting]) && isset($plugins[$plugin_file])) {
+                    unset($plugins[$plugin_file]);
+                }
             }
         }
 
