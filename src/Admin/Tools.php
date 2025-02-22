@@ -129,6 +129,27 @@ class Tools {
             )
         ));
 
+        // Add Clear All Caches at the top
+        $wp_admin_bar->add_node(array(
+            'id' => 'holler-cache-clear-all',
+            'title' => 'Clear All Caches',
+            'parent' => 'holler-cache-control',
+            'href' => '#',
+            'meta' => array(
+                'class' => 'clear-cache-button',
+                'onclick' => 'return false;'
+            )
+        ));
+
+        // Add separator
+        $wp_admin_bar->add_node(array(
+            'id' => 'holler-cache-separator-1',
+            'parent' => 'holler-cache-control',
+            'meta' => array(
+                'class' => 'separator'
+            )
+        ));
+
         // Add Status section
         $wp_admin_bar->add_node(array(
             'id' => 'holler-cache-status',
@@ -162,83 +183,6 @@ class Tools {
                 'id' => 'holler-cache-status-apo',
                 'title' => ($cache_status['cloudflare-apo']['status'] === 'active' ? '🟢' : '🔴') . ' Cloudflare APO',
                 'parent' => 'holler-cache-status'
-            ));
-        }
-
-        // Add separator
-        $wp_admin_bar->add_node(array(
-            'id' => 'holler-cache-separator-1',
-            'parent' => 'holler-cache-control',
-            'meta' => array(
-                'class' => 'separator'
-            )
-        ));
-
-        // Add Clear All Caches
-        $wp_admin_bar->add_node(array(
-            'id' => 'holler-cache-clear-all',
-            'title' => 'Clear All Caches',
-            'parent' => 'holler-cache-control',
-            'href' => '#',
-            'meta' => array(
-                'class' => 'clear-cache-button',
-                'onclick' => 'return false;'
-            )
-        ));
-
-        // Add Clear Page Cache if not hidden
-        if (!$hide_nginx) {
-            $wp_admin_bar->add_node(array(
-                'id' => 'holler-cache-clear-nginx',
-                'title' => 'Clear Page Cache',
-                'parent' => 'holler-cache-control',
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'clear-cache-button',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        // Add Clear Redis Cache if not hidden
-        if (!$hide_redis) {
-            $wp_admin_bar->add_node(array(
-                'id' => 'holler-cache-clear-redis',
-                'title' => 'Clear Redis Cache',
-                'parent' => 'holler-cache-control',
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'clear-cache-button',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        // Add Clear Cloudflare Cache if not hidden
-        if (!$hide_cloudflare) {
-            $wp_admin_bar->add_node(array(
-                'id' => 'holler-cache-clear-cloudflare',
-                'title' => 'Clear Cloudflare Cache',
-                'parent' => 'holler-cache-control',
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'clear-cache-button',
-                    'onclick' => 'return false;'
-                )
-            ));
-        }
-
-        // Add Clear APO Cache if not hidden
-        if (!$hide_apo) {
-            $wp_admin_bar->add_node(array(
-                'id' => 'holler-cache-clear-apo',
-                'title' => 'Clear APO Cache',
-                'parent' => 'holler-cache-control',
-                'href' => '#',
-                'meta' => array(
-                    'class' => 'clear-cache-button',
-                    'onclick' => 'return false;'
-                )
             ));
         }
 
