@@ -4,10 +4,10 @@ namespace Holler\CacheControl\Admin;
 use Holler\CacheControl\Admin\Cache\AjaxHandler;
 use Holler\CacheControl\Admin\Cache\CacheManager;
 use Holler\CacheControl\Admin\Cache\CloudflareAPI;
-use Holler\CacheControl\Admin\Cache\Nginx;
-use Holler\CacheControl\Admin\Cache\Redis;
 use Holler\CacheControl\Admin\Cache\Cloudflare;
 use Holler\CacheControl\Admin\Cache\CloudflareAPO;
+use Holler\CacheControl\Admin\Cache\Nginx;
+use Holler\CacheControl\Admin\Cache\Redis;
 
 /**
  * The admin-specific functionality of the plugin.
@@ -40,20 +40,16 @@ class Tools {
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'handle_purge_cache'));
 
-        // Add admin bar menu
-        add_action('admin_bar_menu', array($this, 'admin_bar_menu'), 100);
-
         // Add admin menu
         add_action('admin_menu', array($this, 'add_plugin_admin_menu'));
 
         // Add settings link to plugins page
         add_filter('plugin_action_links_' . plugin_basename(plugin_dir_path(__FILE__) . $this->plugin_name . '.php'), array($this, 'add_action_links'));
 
-        // Initialize HTTPS filters
-        add_action('init', array($this, 'init_https_filters'));
-
-        // Add cache purging hooks
-        add_action('init', array($this, 'add_cache_purging_hooks'));
+        // Add admin bar menu - use high priority to ensure our formatting
+        add_action('admin_bar_menu', array($this, 'admin_bar_menu'), 9999);
+        add_action('wp_head', array($this, 'admin_bar_styles'));
+        add_action('admin_head', array($this, 'admin_bar_styles'));
 
         // Add scripts and styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_styles'));
@@ -61,6 +57,12 @@ class Tools {
 
         // Add notice container to footer
         add_action('admin_footer', array($this, 'add_notice_container'));
+
+        // Initialize HTTPS filters
+        add_action('init', array($this, 'init_https_filters'));
+
+        // Add cache purging hooks
+        add_action('init', array($this, 'add_cache_purging_hooks'));
 
         // Handle plugin activation/deactivation
         add_action('activate_' . $this->plugin_name . '/' . $this->plugin_name . '.php', array($this, 'handle_plugin_state_change'));
@@ -124,26 +126,39 @@ class Tools {
         // Add main cache control node
         $wp_admin_bar->add_node(array(
             'id' => 'holler-cache-control',
-            'title' => __('Cache Control', 'holler-cache-control'),
-            'href' => admin_url('options-general.php?page=holler-cache-control')
+            'title' => 'Cache Control',
+            'href' => admin_url('options-general.php?page=holler-cache-control'),
+            'meta' => array(
+                'class' => 'menupop'
+            )
         ));
 
         // Add cache status submenu
         $wp_admin_bar->add_node(array(
             'parent' => 'holler-cache-control',
             'id' => 'holler-cache-status',
-            'title' => __('Cache Status', 'holler-cache-control')
+            'title' => 'Cache Status',
+            'meta' => array(
+                'class' => 'menupop'
+            )
         ));
+
+        // Helper function to get status indicator
+        $get_status_text = function($status, $name) {
+            $icon = $status['status'] === 'active' ? '🟢' : '🔴';
+            return sprintf('%s %s', $icon, $name);
+        };
 
         // Add individual cache status items
         if (!$hide_nginx) {
             $wp_admin_bar->add_node(array(
                 'parent' => 'holler-cache-status',
                 'id' => 'holler-nginx-status',
-                'title' => sprintf(
-                    '%s Nginx Cache: %s',
-                    $nginx_status['status'] === 'active' ? '✓' : '✗',
-                    $nginx_status['message'] ?? ($nginx_status['status'] === 'active' ? __('Running', 'holler-cache-control') : __('Not Active', 'holler-cache-control'))
+                'title' => $get_status_text($nginx_status, 'Nginx Cache'),
+                'href' => '#',
+                'meta' => array(
+                    'class' => 'holler-cache-status-item',
+                    'onclick' => 'return false;'
                 )
             ));
         }
@@ -152,34 +167,37 @@ class Tools {
             $wp_admin_bar->add_node(array(
                 'parent' => 'holler-cache-status',
                 'id' => 'holler-redis-status',
-                'title' => sprintf(
-                    '%s Redis Cache: %s',
-                    $redis_status['status'] === 'active' ? '✓' : '✗',
-                    $redis_status['message'] ?? ($redis_status['status'] === 'active' ? __('Running', 'holler-cache-control') : __('Not Active', 'holler-cache-control'))
+                'title' => $get_status_text($redis_status, 'Redis Cache'),
+                'href' => '#',
+                'meta' => array(
+                    'class' => 'holler-cache-status-item',
+                    'onclick' => 'return false;'
                 )
             ));
         }
 
-        if ($cloudflare_status['status'] === 'active') {
+        if ($cloudflare_status['status'] !== 'not_configured') {
             $wp_admin_bar->add_node(array(
                 'parent' => 'holler-cache-status',
                 'id' => 'holler-cloudflare-status',
-                'title' => sprintf(
-                    '%s Cloudflare Cache: %s',
-                    $cloudflare_status['status'] === 'active' ? '✓' : '✗',
-                    $cloudflare_status['message'] ?? ($cloudflare_status['status'] === 'active' ? __('Running', 'holler-cache-control') : __('Not Active', 'holler-cache-control'))
+                'title' => $get_status_text($cloudflare_status, 'Cloudflare Cache'),
+                'href' => '#',
+                'meta' => array(
+                    'class' => 'holler-cache-status-item',
+                    'onclick' => 'return false;'
                 )
             ));
         }
 
-        if ($cloudflare_apo_status['status'] === 'active') {
+        if ($cloudflare_apo_status['status'] !== 'not_configured') {
             $wp_admin_bar->add_node(array(
                 'parent' => 'holler-cache-status',
                 'id' => 'holler-cloudflare-apo-status',
-                'title' => sprintf(
-                    '%s Cloudflare APO: %s',
-                    $cloudflare_apo_status['status'] === 'active' ? '✓' : '✗',
-                    $cloudflare_apo_status['message'] ?? ($cloudflare_apo_status['status'] === 'active' ? __('Running', 'holler-cache-control') : __('Not Active', 'holler-cache-control'))
+                'title' => $get_status_text($cloudflare_apo_status, 'Cloudflare APO'),
+                'href' => '#',
+                'meta' => array(
+                    'class' => 'holler-cache-status-item',
+                    'onclick' => 'return false;'
                 )
             ));
         }
@@ -188,7 +206,10 @@ class Tools {
         $wp_admin_bar->add_node(array(
             'parent' => 'holler-cache-control',
             'id' => 'holler-cache-separator-1',
-            'title' => '<div class="ab-item ab-empty-item" style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></div>'
+            'title' => '<span style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></span>',
+            'meta' => array(
+                'html' => true
+            )
         ));
 
         // Add purge cache submenu
@@ -276,7 +297,7 @@ class Tools {
         $wp_admin_bar->add_node(array(
             'parent' => 'holler-cache-control',
             'id' => 'holler-cache-separator-2',
-            'title' => '<div class="ab-item ab-empty-item" style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></div>'
+            'title' => '<span style="margin: 5px 0; border-top: 1px solid rgba(255,255,255,0.2);"></span>'
         ));
 
         // Add settings link
@@ -376,7 +397,7 @@ class Tools {
      */
     public function init_ajax_handlers() {
         if (!$this->ajax_handler) {
-            $this->ajax_handler = new AjaxHandler();
+            $this->ajax_handler = new \Holler\CacheControl\Admin\Cache\AjaxHandler();
         }
         
         // Add AJAX actions
@@ -445,7 +466,7 @@ class Tools {
             $messages = array();
 
             // Purge Nginx cache
-            $result = Nginx::purge_cache();
+            $result = \Holler\CacheControl\Admin\Cache\Nginx::purge_cache();
             if ($result['success']) {
                 $successes[] = 'nginx';
             } else {
@@ -454,7 +475,7 @@ class Tools {
             $messages[] = $result['message'];
 
             // Purge Redis cache
-            $result = Redis::purge_cache();
+            $result = \Holler\CacheControl\Admin\Cache\Redis::purge_cache();
             if ($result['success']) {
                 $successes[] = 'redis';
             } else {
@@ -463,7 +484,7 @@ class Tools {
             $messages[] = $result['message'];
 
             // Purge Cloudflare cache
-            $result = Cloudflare::purge_cache();
+            $result = \Holler\CacheControl\Admin\Cache\Cloudflare::purge_cache();
             if ($result['success']) {
                 $successes[] = 'cloudflare';
             } else {
@@ -472,7 +493,7 @@ class Tools {
             $messages[] = $result['message'];
 
             // Purge Cloudflare APO cache
-            $result = CloudflareAPO::purge_cache();
+            $result = \Holler\CacheControl\Admin\Cache\CloudflareAPO::purge_cache();
             if ($result['success']) {
                 $successes[] = 'cloudflare_apo';
             } else {
@@ -738,7 +759,7 @@ class Tools {
                 return;
             }
             
-            $status = $this->get_cache_systems_status();
+            $status = self::get_cache_systems_status();
             
             // Add last purge results if available
             $last_purge = get_option('holler_cache_last_purge_results');
@@ -999,5 +1020,112 @@ class Tools {
             'cloudflare' => \Holler\CacheControl\Admin\Cache\Cloudflare::get_status(),
             'cloudflare-apo' => \Holler\CacheControl\Admin\Cache\CloudflareAPO::get_status()
         );
+    }
+
+    /**
+     * Add styles for admin bar
+     */
+    public function admin_bar_styles() {
+        echo '<style>
+            /* Basic menu item styling */
+            #wpadminbar .holler-cache-status-item {
+                display: block !important;
+            }
+
+            #wpadminbar .holler-cache-status-item a {
+                height: 28px !important;
+                line-height: 28px !important;
+                padding: 0 8px !important;
+                color: #fff !important;
+                text-decoration: none !important;
+                cursor: default !important;
+            }
+
+            /* Status text styling */
+            #wpadminbar .holler-cache-status {
+                display: inline-block !important;
+                font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif !important;
+                font-size: 13px !important;
+                line-height: 28px !important;
+                font-weight: normal !important;
+                color: #fff !important;
+            }
+
+            /* Remove all default WordPress styling */
+            #wpadminbar .holler-cache-status-item a::before,
+            #wpadminbar .holler-cache-status-item a::after,
+            #wpadminbar #wp-admin-bar-holler-cache-status a::before,
+            #wpadminbar #wp-admin-bar-holler-nginx-status a::before,
+            #wpadminbar #wp-admin-bar-holler-redis-status a::before,
+            #wpadminbar #wp-admin-bar-holler-cloudflare-status a::before,
+            #wpadminbar #wp-admin-bar-holler-cloudflare-apo-status a::before {
+                display: none !important;
+                content: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font: 0/0 a !important;
+                text-shadow: none !important;
+                background: none !important;
+                text-indent: 0 !important;
+            }
+
+            /* Override WordPress admin text styling */
+            #wpadminbar .holler-cache-status-item * {
+                font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif !important;
+                text-shadow: none !important;
+                letter-spacing: normal !important;
+            }
+
+            /* Remove hover effects */
+            #wpadminbar .holler-cache-status-item:hover a,
+            #wpadminbar .holler-cache-status-item a:hover {
+                background: none !important;
+                color: #fff !important;
+            }
+
+            /* Force text color */
+            #wpadminbar .holler-cache-status-item a,
+            #wpadminbar .holler-cache-status-item:hover a,
+            #wpadminbar .holler-cache-status-item a:hover,
+            #wpadminbar .holler-cache-status-item a:focus {
+                color: #fff !important;
+            }
+
+            /* Remove any WordPress icons */
+            #wpadminbar .holler-cache-status-item .ab-icon,
+            #wpadminbar .holler-cache-status-item a:before,
+            #wpadminbar>#wp-toolbar>#wp-admin-bar-root-default .holler-cache-status-item .ab-icon {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                font: 0/0 a !important;
+                text-shadow: none !important;
+                background: none !important;
+            }
+
+            /* Fix separators */
+            #wpadminbar #wp-admin-bar-holler-cache-separator-1 span,
+            #wpadminbar #wp-admin-bar-holler-cache-separator-2 span {
+                display: block !important;
+                margin: 5px 0 !important;
+                padding: 0 !important;
+                height: 1px !important;
+                line-height: 1px !important;
+            }
+
+            /* Remove list numbers */
+            #wpadminbar .ab-submenu,
+            #wpadminbar .ab-submenu li {
+                list-style: none !important;
+                list-style-type: none !important;
+            }
+
+            #wpadminbar .ab-submenu li::after {
+                display: none !important;
+                content: "" !important;
+            }
+        </style>';
     }
 }
