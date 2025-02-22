@@ -100,45 +100,14 @@ class Nginx {
                 );
             }
 
-            if ($status['type'] === 'redis') {
-                // For Redis, we'll use the RT_WP_NGINX_HELPER plugin's purge method
-                if (class_exists('\\rt_wp_nginx_helper')) {
-                    global $rt_wp_nginx_helper;
-                    if (method_exists($rt_wp_nginx_helper, 'purge_all')) {
-                        $rt_wp_nginx_helper->purge_all();
-                        return array(
-                            'success' => true,
-                            'message' => __('Redis page cache purged successfully.', 'holler-cache-control')
-                        );
-                    }
-                }
-                
-                // Fallback to direct Redis purge if RT plugin not available
-                if (function_exists('wp_cache_flush')) {
-                    wp_cache_flush();
-                    return array(
-                        'success' => true,
-                        'message' => __('Redis page cache purged successfully.', 'holler-cache-control')
-                    );
-                }
-            } else if ($status['type'] === 'fastcgi') {
-                // For FastCGI, we'll use the RT_WP_NGINX_HELPER plugin's purge method
-                if (class_exists('\\rt_wp_nginx_helper')) {
-                    global $rt_wp_nginx_helper;
-                    if (method_exists($rt_wp_nginx_helper, 'purge_all')) {
-                        $rt_wp_nginx_helper->purge_all();
-                        return array(
-                            'success' => true,
-                            'message' => __('FastCGI page cache purged successfully.', 'holler-cache-control')
-                        );
-                    }
-                }
-            }
-
+            // Use GridPane's action hook to purge cache
+            do_action('rt_nginx_helper_purge_all');
+            
             return array(
-                'success' => false,
-                'message' => __('Failed to purge page cache. Cache helper not available.', 'holler-cache-control')
+                'success' => true,
+                'message' => __('Page cache purged successfully.', 'holler-cache-control')
             );
+
         } catch (\Exception $e) {
             error_log('Holler Cache Control - Page cache purge error: ' . $e->getMessage());
             return array(

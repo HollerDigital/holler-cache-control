@@ -48,23 +48,14 @@ class HollerCacheControl {
      * Auto-purge Cloudflare cache on content updates
      */
     private function setup_auto_purge() {
-        // Post/page is updated or published
-        add_action('save_post', array($this, 'purge_on_save'), 10, 3);
-        add_action('wp_trash_post', array($this, 'purge_on_save'), 10, 1);
+        // Post/page is published
         add_action('publish_post', array($this, 'purge_on_save'), 10, 1);
         
-        // Elementor updates
+        // Elementor saves
         add_action('elementor/editor/after_save', array($this, 'purge_on_elementor_save'), 10, 2);
-        add_action('elementor/core/files/clear_cache', array($this, 'purge_cloudflare_cache'));
         
         // Clear cache when switching themes
         add_action('switch_theme', array($this, 'purge_cloudflare_cache'));
-        
-        // Clear cache when widgets are updated
-        add_action('update_option_sidebars_widgets', array($this, 'purge_cloudflare_cache'));
-        
-        // Clear cache when customizer is updated
-        add_action('customize_save_after', array($this, 'purge_cloudflare_cache'));
     }
 
     /**

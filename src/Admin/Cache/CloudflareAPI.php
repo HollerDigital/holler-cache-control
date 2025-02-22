@@ -541,4 +541,273 @@ class CloudflareAPI {
     public function get_api_endpoint() {
         return $this->api_endpoint;
     }
+
+    /**
+     * Get Elementor Page Rules
+     */
+    public function get_elementor_page_rules() {
+        try {
+            $body = $this->make_request('/zones/' . $this->zone_id . '/pagerules');
+            if (!$body['success']) {
+                return array();
+            }
+
+            $elementor_rules = array();
+            foreach ($body['result'] as $rule) {
+                if (strpos($rule['targets'][0]['constraint']['value'], '*elementor*') !== false ||
+                    strpos($rule['targets'][0]['constraint']['value'], '?elementor_library=*') !== false) {
+                    $elementor_rules[] = $rule;
+                }
+            }
+
+            return $elementor_rules;
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to get Elementor page rules: ' . $e->getMessage());
+            return array();
+        }
+    }
+
+    /**
+     * Create Elementor Page Rules
+     */
+    public function create_elementor_page_rules() {
+        try {
+            $site_url = get_site_url();
+            $rules_to_create = array(
+                array(
+                    'targets' => array(
+                        array(
+                            'target' => 'url',
+                            'constraint' => array(
+                                'operator' => 'matches',
+                                'value' => $site_url . '/*elementor*'
+                            )
+                        )
+                    ),
+                    'actions' => array(
+                        array(
+                            'id' => 'rocket_loader',
+                            'value' => 'off'
+                        )
+                    ),
+                    'status' => 'active',
+                    'priority' => 1
+                ),
+                array(
+                    'targets' => array(
+                        array(
+                            'target' => 'url',
+                            'constraint' => array(
+                                'operator' => 'matches',
+                                'value' => $site_url . '/?elementor_library=*'
+                            )
+                        )
+                    ),
+                    'actions' => array(
+                        array(
+                            'id' => 'rocket_loader',
+                            'value' => 'off'
+                        )
+                    ),
+                    'status' => 'active',
+                    'priority' => 2
+                )
+            );
+
+            $results = array();
+            foreach ($rules_to_create as $rule) {
+                $body = $this->make_request('/zones/' . $this->zone_id . '/pagerules', 'POST', $rule);
+                $results[] = array(
+                    'success' => $body['success'],
+                    'message' => $body['success'] ? 
+                        __('Created page rule for: ', 'holler-cache-control') . $rule['targets'][0]['constraint']['value'] :
+                        (isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error.', 'holler-cache-control'))
+                );
+            }
+
+            return $results;
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to create Elementor page rules: ' . $e->getMessage());
+            return array(array(
+                'success' => false,
+                'message' => $e->getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Setup Elementor compatibility
+     */
+    public function setup_elementor_compatibility() {
+        try {
+            // First check if rules already exist
+            $existing_rules = $this->get_elementor_page_rules();
+            if (!empty($existing_rules)) {
+                return array(
+                    'success' => true,
+                    'message' => __('Elementor page rules already exist.', 'holler-cache-control')
+                );
+            }
+
+            // Create the rules
+            $results = $this->create_elementor_page_rules();
+            
+            // Check if all rules were created successfully
+            $all_success = true;
+            $messages = array();
+            foreach ($results as $result) {
+                if (!$result['success']) {
+                    $all_success = false;
+                }
+                $messages[] = $result['message'];
+            }
+
+            return array(
+                'success' => $all_success,
+                'message' => implode("\n", $messages)
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to setup Elementor compatibility: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Create test page rule to disable caching for HTML pages
+     */
+    public function create_test_page_rule() {
+        try {
+            $site_url = get_site_url();
+            $rule = array(
+                'targets' => array(
+                    array(
+                        'target' => 'url',
+                        'constraint' => array(
+                            'operator' => 'equals',
+                            'value' => rtrim($site_url, '/') . '/'
+                        )
+                    )
+                ),
+                'actions' => array(
+                    array(
+                        'id' => 'cache_level',
+                        'value' => 'bypass'
+                    )
+                ),
+                'status' => 'active',
+                'priority' => 1
+            );
+
+            $body = $this->make_request('/zones/' . $this->zone_id . '/pagerules', 'POST', $rule);
+            
+            return array(
+                'success' => $body['success'],
+                'message' => $body['success'] ? 
+                    __('Created test page rule to disable caching.', 'holler-cache-control') :
+                    (isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error.', 'holler-cache-control'))
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to create test page rule: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Delete page rule by ID
+     */
+    public function delete_page_rule($rule_id) {
+        try {
+            $body = $this->make_request('/zones/' . $this->zone_id . '/pagerules/' . $rule_id, 'DELETE');
+            
+            return array(
+                'success' => $body['success'],
+                'message' => $body['success'] ? 
+                    __('Page rule deleted.', 'holler-cache-control') :
+                    (isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error.', 'holler-cache-control'))
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to delete page rule: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get all page rules
+     */
+    public function get_page_rules() {
+        try {
+            $body = $this->make_request('/zones/' . $this->zone_id . '/pagerules');
+            if (!$body['success']) {
+                return array();
+            }
+            return $body['result'];
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to get page rules: ' . $e->getMessage());
+            return array();
+        }
+    }
+
+    /**
+     * Purge specific URL from Cloudflare cache
+     */
+    public function purge_url($url) {
+        try {
+            if (empty($this->email) || empty($this->api_key) || empty($this->zone_id)) {
+                return array(
+                    'success' => false,
+                    'message' => __('Missing Cloudflare credentials.', 'holler-cache-control')
+                );
+            }
+
+            $response = wp_remote_post($this->api_endpoint . '/zones/' . $this->zone_id . '/purge_cache', array(
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'files' => array($url)
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => $response->get_error_message()
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success'])) {
+                return array(
+                    'success' => false,
+                    'message' => __('Invalid response from Cloudflare.', 'holler-cache-control')
+                );
+            }
+
+            if (!$body['success']) {
+                $message = isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error.', 'holler-cache-control');
+                return array(
+                    'success' => false,
+                    'message' => $message
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => __('URL cache purged successfully.', 'holler-cache-control')
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Purge URL error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
 }

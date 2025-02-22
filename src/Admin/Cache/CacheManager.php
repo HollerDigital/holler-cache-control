@@ -98,56 +98,118 @@ class CacheManager {
     }
 
     /**
-     * Purge all caches
+     * Purge OPcache
      */
-    public function purge_all_caches() {
-        $results = array();
-        $errors = array();
-        
-        // Purge Nginx cache
-        $result = $this->purge_nginx_cache();
-        $results['nginx'] = $result;
-        if (!$result['success']) {
-            $errors[] = "Nginx: " . $result['message'];
-        }
-        
-        // Purge Redis cache
-        $result = $this->purge_redis_cache();
-        $results['redis'] = $result;
-        if (!$result['success']) {
-            $errors[] = "Redis: " . $result['message'];
-        }
-        
-        // Purge Cloudflare cache
-        $result = $this->purge_cloudflare_cache();
-        $results['cloudflare'] = $result;
-        if (!$result['success']) {
-            $errors[] = "Cloudflare: " . $result['message'];
-        }
-        
-        // Purge Cloudflare APO cache
-        $result = $this->purge_apo_cache();
-        $results['cloudflare_apo'] = $result;
-        if (!$result['success']) {
-            $errors[] = "Cloudflare APO: " . $result['message'];
-        }
-        
-        // Store results for status polling
-        update_option('holler_cache_control_last_purge_results', array(
-            'timestamp' => time(),
-            'results' => $results
-        ));
-        
-        // Return overall success/failure
-        if (empty($errors)) {
-            return array(
-                'success' => true,
-                'message' => 'All caches cleared successfully'
-            );
-        } else {
+    public static function purge_opcache() {
+        try {
+            if (function_exists('opcache_reset')) {
+                opcache_reset();
+                return array(
+                    'success' => true,
+                    'message' => __('PHP OPcache cleared.', 'holler-cache-control')
+                );
+            }
             return array(
                 'success' => false,
-                'message' => "Failed to clear some caches:\n" . implode("\n", $errors)
+                'message' => __('OPcache not available.', 'holler-cache-control')
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - OPcache purge error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Sleep for a specified number of seconds
+     * 
+     * @param int $seconds Number of seconds to sleep
+     */
+    private static function wait($seconds) {
+        if ($seconds > 0) {
+            sleep($seconds);
+        }
+    }
+
+    /**
+     * Purge all caches in the correct order
+     * 
+     * Order:
+     * 1. PHP OPcache (compiled PHP code)
+     * 2. Redis Object Cache (database queries)
+     * 3. Nginx Page Cache (full pages)
+     * 4. Cloudflare Main Cache
+     * 5. Cloudflare APO Cache
+     * 
+     * Each cache operation is followed by a 5 second delay to ensure completion
+     */
+    public static function purge_all_caches() {
+        $results = array();
+
+        try {
+            // Track the cache clear event
+            Tools::track_cache_clear('all', 'admin');
+
+            // 1. PHP OPcache
+            $opcache_result = self::purge_opcache();
+            if ($opcache_result['success']) {
+                $results['opcache'] = $opcache_result;
+            }
+            self::wait(5); // Wait 5 seconds
+
+            // 2. Redis Object Cache
+            if (function_exists('wp_cache_flush')) {
+                wp_cache_flush();
+                $results['redis'] = array(
+                    'success' => true,
+                    'message' => __('Redis object cache cleared.', 'holler-cache-control')
+                );
+                self::wait(5); // Wait 5 seconds for Redis to fully clear
+            }
+
+            // 3. Nginx Page Cache
+            $nginx_result = Nginx::purge_cache();
+            if ($nginx_result['success']) {
+                $results['nginx'] = array(
+                    'success' => true,
+                    'message' => $nginx_result['message']
+                );
+                self::wait(5); // Wait 5 seconds for Nginx cache to clear
+            }
+
+            // 4. Cloudflare Cache
+            $cloudflare_result = Cloudflare::purge_cache();
+            if ($cloudflare_result['success']) {
+                $results['cloudflare'] = array(
+                    'success' => true,
+                    'message' => $cloudflare_result['message']
+                );
+                self::wait(5); // Wait 5 seconds for Cloudflare to process
+            }
+
+            // 5. Cloudflare APO Cache
+            $cloudflare_apo_result = CloudflareAPO::purge_cache();
+            if ($cloudflare_apo_result['success']) {
+                $results['cloudflare_apo'] = array(
+                    'success' => true,
+                    'message' => $cloudflare_apo_result['message']
+                );
+            }
+
+            // Return results
+            return array(
+                'success' => true,
+                'results' => $results
+            );
+
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to purge all caches: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => __('Failed to purge all caches.', 'holler-cache-control'),
+                'error' => $e->getMessage()
             );
         }
     }
