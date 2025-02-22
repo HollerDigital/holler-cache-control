@@ -51,6 +51,10 @@ class Plugin {
 
         $this->load_dependencies();
         $this->define_admin_hooks();
+        $this->define_public_hooks();
+        
+        // Hide plugin from plugins list if user doesn't have capability
+        add_filter('all_plugins', array($this, 'hide_plugin_from_list'));
     }
 
     /**
@@ -75,7 +79,11 @@ class Plugin {
 
         // Add menu items
         $this->loader->add_action('admin_menu', $admin, 'add_plugin_admin_menu');
-        $this->loader->add_action('admin_bar_menu', $admin, 'admin_bar_menu', 100);
+        $this->loader->add_action('admin_bar_menu', $admin, 'admin_bar_menu', 9999);
+
+        // Add admin bar styles
+        $this->loader->add_action('wp_head', $admin, 'admin_bar_styles');
+        $this->loader->add_action('admin_head', $admin, 'admin_bar_styles');
 
         // Register settings
         $this->loader->add_action('admin_init', $admin, 'register_settings');
@@ -90,6 +98,10 @@ class Plugin {
 
         // Enqueue admin scripts
         $this->loader->add_action('admin_enqueue_scripts', $admin, 'enqueue_scripts');
+    }
+
+    private function define_public_hooks() {
+        // Add public hooks here
     }
 
     /**
@@ -130,5 +142,26 @@ class Plugin {
      */
     public function get_loader() {
         return $this->loader;
+    }
+
+    /**
+     * Hide plugin from plugins list for users without required capability
+     *
+     * @param array $plugins Array of plugins
+     * @return array Modified array of plugins
+     */
+    public function hide_plugin_from_list($plugins) {
+        // Get plugin settings
+        $settings = get_option('holler_cache_control_settings', array());
+        $required_capability = !empty($settings['required_capability']) ? $settings['required_capability'] : 'manage_options';
+
+        // If user doesn't have the required capability, hide the plugin
+        if (!current_user_can($required_capability)) {
+            if (isset($plugins['holler-cache-control/holler-cache-control.php'])) {
+                unset($plugins['holler-cache-control/holler-cache-control.php']);
+            }
+        }
+
+        return $plugins;
     }
 }

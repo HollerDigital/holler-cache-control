@@ -856,135 +856,100 @@ class Tools {
      * Register plugin settings
      */
     public function register_settings() {
-        // Register Slack settings
-        register_setting(
-            'holler_cache_control_settings',
-            'slack_webhook_urls',
-            array(
-                'type' => 'array',
-                'description' => __('Slack webhook URLs for cache control', 'holler-cache-control'),
-                'sanitize_callback' => function($urls) {
-                    if (!is_array($urls)) {
-                        return array();
-                    }
-                    return array_map('esc_url_raw', array_filter($urls));
-                }
-            )
-        );
+        // Register existing settings
+        // ... existing settings ...
 
+        // Register capability setting
         register_setting(
+            'holler_cache_control',
             'holler_cache_control_settings',
-            'slack_allowed_sites',
             array(
-                'type' => 'array',
-                'description' => __('Sites that can be cleared via Slack', 'holler-cache-control'),
-                'sanitize_callback' => function($sites) {
-                    if (!is_array($sites)) {
-                        return array();
-                    }
-                    return array_map('sanitize_text_field', array_filter($sites));
-                }
-            )
-        );
-
-        // Register browser TTL setting
-        register_setting(
-            'holler_cache_control_settings',
-            'cloudflare_browser_ttl',
-            array(
-                'type' => 'integer',
-                'default' => 14400,
-                'sanitize_callback' => function($value) {
-                    $value = intval($value);
-                    return $value > 0 ? $value : 14400;
-                }
-            )
-        );
-
-        // Register Cloudflare optimization settings
-        register_setting(
-            'holler_cache_control_settings',
-            'cloudflare_auto_optimize',
-            array(
-                'type' => 'boolean',
-                'default' => false,
-                'sanitize_callback' => function($value) {
-                    return (bool)$value;
-                }
-            )
-        );
-
-        // Register Nginx settings
-        register_setting(
-            'holler_cache_control_settings',
-            'nginx_cache_method',
-            array(
-                'type' => 'string',
-                'default' => 'redis',
-                'sanitize_callback' => function($value) {
-                    return in_array($value, array('fastcgi', 'redis')) ? $value : 'redis';
-                }
-            )
-        );
-
-        // Register admin bar settings
-        register_setting(
-            'holler_cache_control_settings',
-            'hide_nginx_purge_button',
-            array(
-                'type' => 'boolean',
-                'default' => false,
-                'sanitize_callback' => function($value) {
-                    return (bool)$value;
-                }
-            )
-        );
-
-        register_setting(
-            'holler_cache_control_settings',
-            'hide_redis_purge_button',
-            array(
-                'type' => 'boolean',
-                'default' => false,
-                'sanitize_callback' => function($value) {
-                    return (bool)$value;
-                }
-            )
-        );
-
-        // Register Cloudflare settings
-        if (!defined('CLOUDFLARE_EMAIL')) {
-            register_setting(
-                'holler_cache_control_settings',
-                'cloudflare_email',
-                array(
-                    'type' => 'string',
-                    'sanitize_callback' => 'sanitize_email'
+                'type' => 'object',
+                'description' => 'Holler Cache Control Settings',
+                'sanitize_callback' => array($this, 'sanitize_settings'),
+                'show_in_rest' => false,
+                'default' => array(
+                    'required_capability' => 'manage_options',
+                    'hide_nginx_purge_button' => false,
+                    'hide_redis_purge_button' => false,
+                    'hide_cloudflare_purge_button' => false,
+                    'hide_cloudflare_apo_purge_button' => false
                 )
+            )
+        );
+
+        // Add settings section for visibility
+        add_settings_section(
+            'holler_cache_control_visibility',
+            'Plugin Visibility',
+            array($this, 'render_visibility_section'),
+            'holler-cache-control'
+        );
+
+        // Add capability field
+        add_settings_field(
+            'required_capability',
+            'Required Capability',
+            array($this, 'render_capability_field'),
+            'holler-cache-control',
+            'holler_cache_control_visibility'
+        );
+    }
+
+    /**
+     * Render the visibility section description
+     */
+    public function render_visibility_section() {
+        echo '<p>Control who can see and use the plugin.</p>';
+    }
+
+    /**
+     * Render the capability field
+     */
+    public function render_capability_field() {
+        $settings = get_option('holler_cache_control_settings', array());
+        $capability = !empty($settings['required_capability']) ? $settings['required_capability'] : 'manage_options';
+        
+        $capabilities = array(
+            'manage_options' => 'Administrator (manage_options)',
+            'edit_pages' => 'Editor (edit_pages)',
+            'edit_posts' => 'Author (edit_posts)',
+            'edit_published_posts' => 'Contributor (edit_published_posts)'
+        );
+
+        echo '<select name="holler_cache_control_settings[required_capability]">';
+        foreach ($capabilities as $cap => $label) {
+            printf(
+                '<option value="%s" %s>%s</option>',
+                esc_attr($cap),
+                selected($capability, $cap, false),
+                esc_html($label)
             );
         }
+        echo '</select>';
+        echo '<p class="description">Users must have this capability to see and use the plugin. Default: Administrator</p>';
+    }
 
-        if (!defined('CLOUDFLARE_API_KEY')) {
-            register_setting(
-                'holler_cache_control_settings',
-                'cloudflare_api_key',
-                array(
-                    'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
-                )
-            );
+    /**
+     * Sanitize settings
+     */
+    public function sanitize_settings($input) {
+        $sanitized = array();
+        
+        // Sanitize capability
+        if (!empty($input['required_capability'])) {
+            $sanitized['required_capability'] = sanitize_text_field($input['required_capability']);
+        } else {
+            $sanitized['required_capability'] = 'manage_options';
         }
-
-        if (!defined('CLOUDFLARE_ZONE_ID')) {
-            register_setting(
-                'holler_cache_control_settings',
-                'cloudflare_zone_id',
-                array(
-                    'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
-                )
-            );
-        }
+        
+        // Sanitize other settings
+        $sanitized['hide_nginx_purge_button'] = !empty($input['hide_nginx_purge_button']);
+        $sanitized['hide_redis_purge_button'] = !empty($input['hide_redis_purge_button']);
+        $sanitized['hide_cloudflare_purge_button'] = !empty($input['hide_cloudflare_purge_button']);
+        $sanitized['hide_cloudflare_apo_purge_button'] = !empty($input['hide_cloudflare_apo_purge_button']);
+        
+        return $sanitized;
     }
 
     /**
@@ -1127,5 +1092,55 @@ class Tools {
                 content: "" !important;
             }
         </style>';
+    }
+
+    /**
+     * Add plugin settings page
+     */
+    public function add_settings_page() {
+        add_options_page(
+            'Holler Cache Control',
+            'Cache Control',
+            'manage_options',
+            'holler-cache-control',
+            array($this, 'render_settings_page')
+        );
+    }
+
+    /**
+     * Render settings page
+     */
+    public function render_settings_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        // Save settings if form was submitted
+        if (isset($_POST['submit'])) {
+            check_admin_referer('holler_cache_control_settings');
+            
+            $settings = array();
+            if (isset($_POST['holler_cache_control_settings'])) {
+                $settings = $this->sanitize_settings($_POST['holler_cache_control_settings']);
+                update_option('holler_cache_control_settings', $settings);
+            }
+            
+            echo '<div class="notice notice-success"><p>Settings saved.</p></div>';
+        }
+
+        // Get current settings
+        $settings = get_option('holler_cache_control_settings', array());
+        ?>
+        <div class="wrap">
+            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+            <form action="" method="post">
+                <?php
+                settings_fields('holler_cache_control');
+                do_settings_sections('holler-cache-control');
+                submit_button('Save Settings');
+                ?>
+            </form>
+        </div>
+        <?php
     }
 }
