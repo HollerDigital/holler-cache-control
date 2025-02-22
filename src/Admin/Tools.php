@@ -37,7 +37,6 @@ class Tools {
 
         // Add hooks for cache purging
         add_action('admin_init', array($this, 'register_settings'));
-        add_action('admin_menu', array($this, 'add_plugin_admin_menu'));
         add_action('admin_bar_menu', array($this, 'admin_bar_menu'), 100);
         add_action('admin_head', array($this, 'admin_bar_styles'));
         add_action('admin_footer', array($this, 'add_notice_container'));
@@ -119,7 +118,7 @@ class Tools {
         $wp_admin_bar->add_node(array(
             'id' => 'holler-cache-control',
             'title' => 'Cache Control',
-            'href' => admin_url('options-general.php?page=holler-cache-control'),
+            'href' => admin_url('options-general.php?page=settings_page_holler-cache-control'),
             'meta' => array(
                 'class' => 'menupop'
             )
@@ -155,7 +154,7 @@ class Tools {
             'id' => 'holler-cache-settings',
             'title' => 'Settings',
             'parent' => 'holler-cache-control',
-            'href' => admin_url('options-general.php?page=holler-cache-control')
+            'href' => admin_url('options-general.php?page=settings_page_holler-cache-control')
         ));
     }
 
@@ -163,14 +162,13 @@ class Tools {
      * Register the administration menu for this plugin
      */
     public function add_plugin_admin_menu() {
-        add_menu_page(
-            __('Cache Control', 'holler-cache-control'),
-            __('Cache Control', 'holler-cache-control'),
-            'manage_options',
-            'holler-cache-control',
-            array($this, 'display_plugin_admin_page'),
-            'dashicons-performance',
-            90
+        add_submenu_page(
+            'options-general.php',    // Parent slug
+            __('Cache Control Settings', 'holler-cache-control'), // Page title
+            __('Cache Control', 'holler-cache-control'),         // Menu title
+            'manage_options',        // Capability
+            'settings_page_holler-cache-control',  // Menu slug
+            array($this, 'display_plugin_admin_page')
         );
     }
 

@@ -5,6 +5,8 @@
  * @package HollerCacheControl
  */
 
+namespace Holler\CacheControl;
+
 if (!defined('WPINC')) {
     die;
 }

@@ -130,8 +130,7 @@ class HollerCacheControl {
     private function define_admin_hooks() {
         $plugin_admin = new \Holler\CacheControl\Admin\Tools($this->get_plugin_name(), $this->get_version());
 
-        // Add menu items
-        $this->loader->add_action('admin_menu', $plugin_admin, 'remove_old_menu_items', 999);
+        $this->loader->add_action('admin_menu', $plugin_admin, 'add_plugin_admin_menu', 99);
         $this->loader->add_action('admin_init', $plugin_admin, 'register_settings');
         $this->loader->add_action('admin_bar_menu', $plugin_admin, 'admin_bar_menu', 100);
         $this->loader->add_action('admin_head', $plugin_admin, 'admin_bar_styles');

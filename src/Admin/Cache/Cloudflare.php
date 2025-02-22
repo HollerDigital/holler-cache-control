@@ -308,4 +308,75 @@ class Cloudflare {
             );
         }
     }
+
+    /**
+     * Get APO (Automatic Platform Optimization) settings
+     *
+     * @return array APO settings and status
+     */
+    public static function get_apo_info() {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return false;
+            }
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            // Get APO settings
+            $response = wp_remote_get($api->get_api_endpoint() . '/zones/' . $credentials['zone_id'] . '/settings/automatic_platform_optimization', array(
+                'headers' => $api->get_headers()
+            ));
+
+            if (is_wp_error($response)) {
+                return false;
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['result'])) {
+                return false;
+            }
+
+            $apo_settings = $body['result'];
+            $is_enabled = $apo_settings['value'];
+
+            // Get cache analytics if APO is enabled
+            $cache_stats = array();
+            if ($is_enabled) {
+                $analytics_response = wp_remote_get($api->get_api_endpoint() . '/zones/' . $credentials['zone_id'] . '/analytics/dashboard', array(
+                    'headers' => $api->get_headers(),
+                    'body' => array(
+                        'since' => '-1440', // Last 24 hours
+                        'continuous' => true
+                    )
+                ));
+
+                if (!is_wp_error($analytics_response)) {
+                    $analytics = json_decode(wp_remote_retrieve_body($analytics_response), true);
+                    if ($analytics && isset($analytics['result'])) {
+                        $cache_stats = array(
+                            'requests' => $analytics['result']['totals']['requests']['all'],
+                            'cached_requests' => $analytics['result']['totals']['requests']['cached'],
+                            'cache_hit_rate' => round(($analytics['result']['totals']['requests']['cached'] / $analytics['result']['totals']['requests']['all']) * 100, 2) . '%'
+                        );
+                    }
+                }
+            }
+
+            return array(
+                'enabled' => $is_enabled,
+                'cache_by_device_type' => $apo_settings['value'] && isset($apo_settings['cache_by_device_type']) ? $apo_settings['cache_by_device_type'] : false,
+                'cache_by_location' => $apo_settings['value'] && isset($apo_settings['cache_by_location']) ? $apo_settings['cache_by_location'] : false,
+                'cache_stats' => $cache_stats
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to get APO info: ' . $e->getMessage());
+            return false;
+        }
+    }
 }
