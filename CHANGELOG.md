@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2024-12-24
+
+### Added
+- **Asynchronous Cache Purging**: Implemented background cache purging for AJAX requests to prevent 504 Gateway Timeout errors during Elementor and page builder operations
+- **Enhanced Smart Detection**: Improved post ID detection for Elementor AJAX actions, looking for post IDs in multiple request parameters (`editor_post_id`, `post`, GET parameters)
+- **WordPress Cron Integration**: Added `holler_cache_control_async_purge` cron hook for background cache operations
+- **Comprehensive Debug Logging**: Enhanced logging for troubleshooting cache purging behavior and smart detection decisions
+
+### Changed
+- **AJAX Request Handling**: Cache purging for AJAX requests (like Elementor publish) now schedules background processing instead of blocking the request
+- **Smart Detection Logic**: Refined to allow cache purging on legitimate publish/update actions while preventing purges during auto-saves and drafts
+- **Performance Optimization**: Eliminated AJAX timeouts during page builder editing and publishing workflows
+
+### Fixed
+- **504 Gateway Timeout Errors**: Resolved timeout issues when publishing pages through Elementor and other page builders
+- **Elementor Publish Cache Clearing**: Cache now properly clears when publishing pages through Elementor without causing editor conflicts
+- **File Structure Corruption**: Fixed duplicate method definitions and corrupted code structure from previous edits
+- **AJAX Performance**: Publishing and updating pages is now significantly faster with no blocking cache operations
+
+### Technical Details
+- Added `schedule_async_cache_purge()` method for background cache scheduling
+- Added `handle_async_cache_purge()` method as WordPress cron callback
+- Enhanced `should_skip_auto_purge()` with multi-parameter post ID detection
+- Improved `purge_all_caches_with_detection()` with async scheduling for AJAX contexts
+- Registered `holler_cache_control_async_purge` action hook in plugin constructor
+
+### Developer Notes
+- Cache purging now uses WordPress's built-in cron system for background processing
+- AJAX requests complete immediately while cache operations happen asynchronously
+- Smart detection maintains compatibility with multiple page builders and editors
+- Debug logging provides detailed insights into cache purging decisions and execution
+
 ## [1.3.9] - 2025-01-24
 
 ### Added

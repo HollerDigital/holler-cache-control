@@ -65,6 +65,9 @@ class Tools {
         
         // Add frontend admin bar script directly (bypass loader)
         add_action('wp_footer', array($this, 'add_frontend_admin_bar_script'), 999);
+        
+        // Register async cache purge cron hook
+        add_action('holler_cache_control_async_purge', array($this, 'handle_async_cache_purge'));
     }
 
     /**
@@ -1421,13 +1424,42 @@ class Tools {
     private function should_skip_auto_purge() {
         // Skip if we're in an AJAX request from page builders
         if (defined('DOING_AJAX') && DOING_AJAX) {
-            // Check for Elementor editing
+            // Check for Elementor editing - but allow publish actions
             if (isset($_POST['action']) && (
                 strpos($_POST['action'], 'elementor') !== false ||
                 strpos($_POST['action'], 'elementor_ajax') !== false ||
                 $_POST['action'] === 'elementor_save_builder_content' ||
                 $_POST['action'] === 'elementor_render_widget'
             )) {
+                // Allow cache purging if this is a legitimate publish action
+                if (isset($_POST['post_status']) && $_POST['post_status'] === 'publish') {
+                    error_log('Holler Cache Control: Allowing purge - Elementor publish action detected');
+                    return false;
+                }
+                
+                // Try to find the post ID in various places Elementor might store it
+                $post_id = null;
+                if (isset($_POST['post_id']) && !empty($_POST['post_id'])) {
+                    $post_id = $_POST['post_id'];
+                } elseif (isset($_POST['editor_post_id']) && !empty($_POST['editor_post_id'])) {
+                    $post_id = $_POST['editor_post_id'];
+                } elseif (isset($_GET['post']) && !empty($_GET['post'])) {
+                    $post_id = $_GET['post'];
+                } elseif (isset($_POST['post']) && !empty($_POST['post']) && !is_array($_POST['post'])) {
+                    $post_id = $_POST['post'];
+                }
+                
+                // Allow cache purging if this is an update to published content
+                if ($post_id) {
+                    $post_status = get_post_status($post_id);
+                    error_log('Holler Cache Control: Found post ID ' . $post_id . ' with status: ' . $post_status);
+                    if ($post_status === 'publish') {
+                        error_log('Holler Cache Control: Allowing purge - Updating published content via Elementor (ID: ' . $post_id . ')');
+                        return false;
+                    }
+                }
+                
+                error_log('Holler Cache Control: Skipping - Elementor AJAX detected (auto-save): ' . $_POST['action']);
                 return true;
             }
 
@@ -1437,6 +1469,7 @@ class Tools {
                 $_POST['action'] === 'autosave' ||
                 strpos($_POST['action'], 'gutenberg') !== false
             )) {
+                error_log('Holler Cache Control: Skipping - WordPress editor AJAX detected: ' . $_POST['action']);
                 return true;
             }
 
@@ -1447,12 +1480,14 @@ class Tools {
                 strpos($_POST['action'], 'vc_') !== false || // Visual Composer
                 strpos($_POST['action'], 'fusion') !== false // Avada Fusion Builder
             )) {
+                error_log('Holler Cache Control: Skipping - Page builder AJAX detected: ' . $_POST['action']);
                 return true;
             }
         }
 
         // Skip if Elementor is actively editing (check URL parameters)
         if (isset($_GET['elementor-preview']) || isset($_GET['elementor_library'])) {
+            error_log('Holler Cache Control: Skipping - Elementor preview/library mode detected');
             return true;
         }
 
@@ -1460,6 +1495,7 @@ class Tools {
         if (function_exists('get_current_screen')) {
             $screen = get_current_screen();
             if ($screen && $screen->is_block_editor()) {
+                error_log('Holler Cache Control: Skipping - WordPress block editor detected');
                 return true;
             }
         }
@@ -1469,19 +1505,23 @@ class Tools {
             $_POST['post_status'] === 'auto-draft' ||
             $_POST['post_status'] === 'inherit' // revisions
         )) {
+            error_log('Holler Cache Control: Skipping - Auto-draft or revision detected: ' . $_POST['post_status']);
             return true;
         }
 
         // Skip for preview requests
         if (isset($_POST['wp-preview']) && $_POST['wp-preview'] === 'dopreview') {
+            error_log('Holler Cache Control: Skipping - Preview request detected');
             return true;
         }
 
         // Skip if this is just a draft save (not a publish)
         if (isset($_POST['save']) || isset($_POST['draft'])) {
+            error_log('Holler Cache Control: Skipping - Draft save detected');
             return true;
         }
 
+        error_log('Holler Cache Control: should_skip_auto_purge() returning false - purge should proceed');
         return false;
     }
 
@@ -1490,14 +1530,69 @@ class Tools {
      * Only purges if not in an editing session that could cause timeouts
      */
     public function purge_all_caches_with_detection() {
+        // Debug logging to understand what's happening
+        error_log('Holler Cache Control: purge_all_caches_with_detection() called');
+        error_log('Holler Cache Control: DOING_AJAX = ' . (defined('DOING_AJAX') && DOING_AJAX ? 'true' : 'false'));
+        error_log('Holler Cache Control: $_POST action = ' . (isset($_POST['action']) ? $_POST['action'] : 'not set'));
+        error_log('Holler Cache Control: $_POST post_status = ' . (isset($_POST['post_status']) ? $_POST['post_status'] : 'not set'));
+        error_log('Holler Cache Control: $_POST post_id = ' . (isset($_POST['post_id']) ? $_POST['post_id'] : 'not set'));
+        error_log('Holler Cache Control: $_GET elementor-preview = ' . (isset($_GET['elementor-preview']) ? 'true' : 'false'));
+        
+        // Log additional POST data to understand Elementor structure
+        if (isset($_POST['editor_post_id'])) {
+            error_log('Holler Cache Control: $_POST editor_post_id = ' . $_POST['editor_post_id']);
+        }
+        if (isset($_POST['post'])) {
+            error_log('Holler Cache Control: $_POST post = ' . (is_array($_POST['post']) ? 'array' : $_POST['post']));
+        }
+        if (isset($_GET['post'])) {
+            error_log('Holler Cache Control: $_GET post = ' . $_GET['post']);
+        }
+        
+        // Log additional Elementor-specific data
+        if (isset($_POST['post_id']) && !empty($_POST['post_id'])) {
+            $current_post_status = get_post_status($_POST['post_id']);
+            error_log('Holler Cache Control: Current post status for ID ' . $_POST['post_id'] . ' = ' . $current_post_status);
+        }
+        
         // Skip auto-purge during editing sessions to prevent AJAX timeouts
         if ($this->should_skip_auto_purge()) {
             error_log('Holler Cache Control: Skipping auto-purge during editing session to prevent AJAX timeout');
             return;
         }
-
-        // Proceed with normal cache purging
+        
+        // For AJAX requests (like Elementor), schedule async purge to prevent timeouts
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            error_log('Holler Cache Control: Scheduling async cache purge to prevent AJAX timeout');
+            $this->schedule_async_cache_purge();
+            return;
+        }
+        
+        error_log('Holler Cache Control: Proceeding with immediate cache purge!');
         $this->purge_all_caches();
+    }
+
+    /**
+     * Schedule asynchronous cache purge to prevent AJAX timeouts
+     * Uses WordPress cron to run cache purge in background
+     */
+    private function schedule_async_cache_purge() {
+        // Schedule a single event to run immediately in background
+        if (!wp_next_scheduled('holler_cache_control_async_purge')) {
+            wp_schedule_single_event(time(), 'holler_cache_control_async_purge');
+            error_log('Holler Cache Control: Async cache purge scheduled');
+        } else {
+            error_log('Holler Cache Control: Async cache purge already scheduled');
+        }
+    }
+
+    /**
+     * Handle the async cache purge cron event
+     */
+    public function handle_async_cache_purge() {
+        error_log('Holler Cache Control: Executing async cache purge');
+        $this->purge_all_caches();
+        error_log('Holler Cache Control: Async cache purge completed');
     }
 
     /**
