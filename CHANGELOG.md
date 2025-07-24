@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2025-01-24
+
+### Fixed
+- **CRITICAL**: Fixed "View details | Check for updates" functionality in WordPress plugins page
+- Replaced plugin-update-checker library v5.5 with proven working v4.11 from Holler Elementor
+- Plugin now displays proper "View details | Check for updates" links instead of "Visit plugin site"
+- Fixed compatibility issues with WordPress plugin update system
+- Resolved plugin details modal not appearing correctly
+
+### Enhanced
+- Plugin update system now matches the working functionality of Holler Elementor plugin
+- Improved WordPress plugin management interface integration
+- Better plugin discovery and update experience for users
+- Enhanced compatibility with WordPress core plugin update mechanisms
+
 ## [1.3.4] - 2025-01-24
 
 ### Added
