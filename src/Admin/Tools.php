@@ -321,6 +321,7 @@ class Tools {
         add_action('wp_ajax_holler_save_cloudflare_settings', array($this, 'handle_save_cloudflare_settings_ajax'));
         add_action('wp_ajax_holler_export_diagnostics', array($this, 'handle_export_diagnostics_ajax'));
         add_action('wp_ajax_holler_cache_status', array($this, 'handle_cache_status_ajax'));
+        add_action('wp_ajax_holler_toggle_cloudflare_dev_mode', array($this, 'handle_toggle_cloudflare_dev_mode_ajax'));
     }
 
     /**
@@ -2062,6 +2063,42 @@ class Tools {
                 }
             </style>
             <?php
+        }
+    }
+
+    /**
+     * Handle AJAX request to toggle Cloudflare development mode
+     */
+    public function handle_toggle_cloudflare_dev_mode_ajax() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control_admin')) {
+            wp_die('Security check failed');
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        $action = sanitize_text_field($_POST['dev_mode_action']);
+        $value = ($action === 'enable') ? 'on' : 'off';
+
+        // Get current status first
+        $current_status = \Holler\CacheControl\Admin\Cache\Cloudflare::get_development_mode();
+        
+        // Toggle development mode
+        $result = \Holler\CacheControl\Admin\Cache\Cloudflare::update_development_mode($value);
+
+        if ($result['success']) {
+            wp_send_json_success(array(
+                'message' => $result['message'],
+                'new_status' => $value,
+                'action_performed' => $action
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => $result['message']
+            ));
         }
     }
 }

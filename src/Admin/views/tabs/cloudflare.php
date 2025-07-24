@@ -21,6 +21,12 @@ $credentials = array(
 // Get Cloudflare configuration guidance
 $config_guidance = \Holler\CacheControl\get_cloudflare_config_guidance();
 $config_status = \Holler\CacheControl\get_cloudflare_config_status();
+
+// Get development mode status
+$dev_mode_status = null;
+if ($cloudflare_status['status'] === 'active') {
+    $dev_mode_status = \Holler\CacheControl\Admin\Cache\Cloudflare::get_development_mode();
+}
 ?>
 
 <!-- Cloudflare Status Overview -->
@@ -51,6 +57,36 @@ $config_status = \Holler\CacheControl\get_cloudflare_config_status();
                 </p>
                 <p><em><?php echo esc_html($cloudflare_apo_status['message']); ?></em></p>
             </div>
+            
+            <?php if ($dev_mode_status): ?>
+            <div class="cache-details">
+                <h4><?php _e('Development Mode', 'holler-cache-control'); ?></h4>
+                <p>
+                    <span class="<?php echo $dev_mode_status['value'] === 'on' ? 'active' : 'inactive'; ?>">
+                        <span class="status-indicator"></span>
+                        <?php echo $dev_mode_status['value'] === 'on' ? __('Enabled', 'holler-cache-control') : __('Disabled', 'holler-cache-control'); ?>
+                    </span>
+                </p>
+                <p><em><?php echo esc_html($dev_mode_status['message']); ?></em></p>
+                
+                <div style="margin-top: 12px;">
+                    <button type="button" class="button button-secondary" id="toggle-dev-mode" 
+                            data-current-status="<?php echo esc_attr($dev_mode_status['value']); ?>">
+                        <span class="dashicons dashicons-admin-tools"></span>
+                        <?php echo $dev_mode_status['value'] === 'on' ? __('Disable Dev Mode', 'holler-cache-control') : __('Enable Dev Mode', 'holler-cache-control'); ?>
+                    </button>
+                </div>
+                
+                <?php if ($dev_mode_status['value'] === 'on'): ?>
+                <div class="holler-notice notice-warning" style="margin-top: 8px; padding: 8px 12px;">
+                    <p style="margin: 0; font-size: 12px;">
+                        <strong><?php _e('Note:', 'holler-cache-control'); ?></strong> 
+                        <?php _e('Development mode bypasses cache for 3 hours, then automatically disables.', 'holler-cache-control'); ?>
+                    </p>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
         </div>
         
         <?php if ($cloudflare_status['status'] === 'active' && $apo_info): ?>
@@ -307,5 +343,99 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    // Handle Development Mode toggle
+    $('#toggle-dev-mode').on('click', function(e) {
+        e.preventDefault();
+        var $button = $(this);
+        var currentStatus = $button.data('current-status');
+        var action = currentStatus === 'on' ? 'disable' : 'enable';
+        var originalText = $button.text();
+        var $statusSpan = $button.closest('.cache-details').find('span:first');
+        var $statusText = $statusSpan.contents().filter(function() {
+            return this.nodeType === 3; // Text nodes only
+        });
+        var $messageText = $button.closest('.cache-details').find('p:nth-child(3) em');
+        var $warningNotice = $button.closest('.cache-details').find('.holler-notice');
+        
+        $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> ' + 
+            (action === 'enable' ? '<?php echo esc_js(__('Enabling...', 'holler-cache-control')); ?>' : '<?php echo esc_js(__('Disabling...', 'holler-cache-control')); ?>'));
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'holler_toggle_cloudflare_dev_mode',
+                dev_mode_action: action,
+                nonce: '<?php echo wp_create_nonce('holler_cache_control_admin'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Update UI elements
+                    var newStatus = response.data.new_status;
+                    var isEnabled = newStatus === 'on';
+                    
+                    // Update status indicator and text
+                    $statusSpan.removeClass('active inactive').addClass(isEnabled ? 'active' : 'inactive');
+                    $statusText.replaceWith(isEnabled ? '<?php echo esc_js(__('Enabled', 'holler-cache-control')); ?>' : '<?php echo esc_js(__('Disabled', 'holler-cache-control')); ?>');
+                    
+                    // Update message
+                    $messageText.text(response.data.message);
+                    
+                    // Update button
+                    $button.data('current-status', newStatus)
+                           .html('<span class="dashicons dashicons-admin-tools"></span> ' + 
+                                (isEnabled ? '<?php echo esc_js(__('Disable Dev Mode', 'holler-cache-control')); ?>' : '<?php echo esc_js(__('Enable Dev Mode', 'holler-cache-control')); ?>'));
+                    
+                    // Show/hide warning notice
+                    if (isEnabled && $warningNotice.length === 0) {
+                        $button.parent().after('<div class="holler-notice notice-warning" style="margin-top: 8px; padding: 8px 12px;">' +
+                            '<p style="margin: 0; font-size: 12px;">' +
+                            '<strong><?php echo esc_js(__('Note:', 'holler-cache-control')); ?></strong> ' +
+                            '<?php echo esc_js(__('Development mode bypasses cache for 3 hours, then automatically disables.', 'holler-cache-control')); ?>' +
+                            '</p></div>');
+                    } else if (!isEnabled && $warningNotice.length > 0) {
+                        $warningNotice.remove();
+                    }
+                    
+                    // Show success message
+                    showNotice(response.data.message, 'success');
+                } else {
+                    showNotice('<?php echo esc_js(__('Failed to toggle development mode: ', 'holler-cache-control')); ?>' + (response.data ? response.data.message : ''), 'error');
+                }
+            },
+            error: function() {
+                showNotice('<?php echo esc_js(__('Failed to toggle development mode. Please try again.', 'holler-cache-control')); ?>', 'error');
+            },
+            complete: function() {
+                $button.prop('disabled', false);
+            }
+        });
+    });
 });
 </script>
+
+<style>
+.dashicons.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+#toggle-dev-mode {
+    transition: all 0.3s ease;
+}
+
+#toggle-dev-mode:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.cache-details .holler-notice {
+    border-radius: 4px;
+    font-size: 12px;
+}
+</style>

@@ -300,6 +300,66 @@ class CloudflareAPI {
     }
 
     /**
+     * Update development mode setting
+     *
+     * @param string $value 'on' or 'off'
+     * @return array Update result
+     */
+    public function update_development_mode($value = 'off') {
+        try {
+            $response = wp_remote_request($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/development_mode', array(
+                'method' => 'PATCH',
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'value' => $value
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => __('Failed to connect to Cloudflare API.', 'holler-cache-control')
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success'])) {
+                return array(
+                    'success' => false,
+                    'message' => __('Invalid response from Cloudflare API.', 'holler-cache-control')
+                );
+            }
+
+            if ($body['success']) {
+                $status_message = $value === 'on' ? 
+                    __('Development mode enabled. Cache is bypassed for 3 hours.', 'holler-cache-control') :
+                    __('Development mode disabled. Normal caching resumed.', 'holler-cache-control');
+                    
+                return array(
+                    'success' => true,
+                    'message' => $status_message,
+                    'value' => $value
+                );
+            } else {
+                $error_message = isset($body['errors'][0]['message']) ? 
+                    $body['errors'][0]['message'] : 
+                    __('Unknown error occurred.', 'holler-cache-control');
+                    
+                return array(
+                    'success' => false,
+                    'message' => $error_message
+                );
+            }
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Update development mode error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
      * Get cache level
      */
     public function get_cache_level() {

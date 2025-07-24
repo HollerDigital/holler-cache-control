@@ -354,6 +354,80 @@ class Cloudflare {
     }
 
     /**
+     * Update development mode setting
+     *
+     * @param string $value 'on' or 'off'
+     * @return array Update result
+     */
+    public static function update_development_mode($value = 'off') {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return array(
+                    'success' => false,
+                    'message' => __('Cloudflare credentials not configured.', 'holler-cache-control')
+                );
+            }
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            return $api->update_development_mode($value);
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to update development mode: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get development mode status
+     *
+     * @return array Development mode status
+     */
+    public static function get_development_mode() {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return array(
+                    'success' => false,
+                    'value' => 'off',
+                    'message' => __('Cloudflare credentials not configured.', 'holler-cache-control')
+                );
+            }
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            $result = $api->get_development_mode();
+            return array(
+                'success' => true,
+                'value' => $result['value'],
+                'message' => $result['value'] === 'on' ? 
+                    __('Development mode is currently enabled.', 'holler-cache-control') :
+                    __('Development mode is currently disabled.', 'holler-cache-control')
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to get development mode: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'value' => 'off',
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
      * Get APO (Automatic Platform Optimization) settings
      *
      * @return array APO settings and status

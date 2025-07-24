@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2025-01-24
+
+### Added
+- **Cloudflare Development Mode Toggle**: New one-click toggle to enable/disable Cloudflare Development Mode directly from the WordPress admin
+  - Real-time status display showing current development mode state (Enabled/Disabled)
+  - Interactive toggle button with loading states and visual feedback
+  - Smart warning notices when development mode is active (3-hour auto-disable info)
+  - Full AJAX integration with proper security checks and error handling
+  - Seamless integration into existing Cloudflare settings page
+
+### Enhanced
+- Cloudflare settings page now displays development mode status alongside cache and APO status
+- Added comprehensive development mode API methods to CloudflareAPI and main Cloudflare classes
+- Improved user experience with smooth transitions and real-time UI updates
+
 ## [1.3.2] - 2025-01-24
 
 ### Fixed
