@@ -56,6 +56,7 @@ use Holler\CacheControl\Admin\Cache\Redis;
             </p>
             <div class="cache-actions">
                 <button type="button" class="button button-primary purge-cache" data-type="redis">
+                <span class="dashicons dashicons-database"></span>
                     <?php _e('Purge Object Cache', 'holler-cache-control'); ?>
                 </button>
             </div>

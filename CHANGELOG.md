@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-01-24
+
+### Added
+- Comprehensive Perfmatters compatibility diagnostics and documentation
+- Frontend admin bar "Clear All Caches" button functionality
+- Robust wp_footer hook implementation for frontend script loading
+- Automatic detection of Perfmatters JavaScript delay/defer settings
+- Visual compatibility status indicators in diagnostics tab
+- Step-by-step troubleshooting documentation for admin bar issues
+- Enhanced error handling for array/string format compatibility
+- Debug logging and console output for frontend troubleshooting
+
+### Fixed
+- Admin bar "Clear All Caches" button not working on frontend pages
+- Perfmatters JavaScript delay/defer preventing admin bar functionality
+- AJAX action and nonce mismatch causing 400/403 errors
+- Frontend script loading issues with performance optimization plugins
+- PHP strpos() error when handling Perfmatters exclusion arrays
+- Dynamic status text updates for cache purge operations
+
+### Enhanced
+- Admin bar cleanup with comprehensive duplicate removal
+- Frontend compatibility for all admin bar cache management features
+- Diagnostics tool with intelligent plugin conflict detection
+- User experience with actionable recommendations and exclusion strings
+- Documentation for common performance plugin compatibility issues
+
 ## [1.1.0] - 2025-02-14
 
 ### Added

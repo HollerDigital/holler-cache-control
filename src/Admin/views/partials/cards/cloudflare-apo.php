@@ -49,10 +49,12 @@ use Holler\CacheControl\Admin\Cache\Cloudflare;
                 <?php endif; ?>
             </div>
         <?php endif; ?>
-        <div class="cache-actions">
-            <button type="button" class="button button-primary purge-cache" data-type="cloudflare_apo">
-                <?php _e('Purge APO Cache', 'holler-cache-control'); ?>
-            </button>
-        </div>
+        <?php if ($cloudflare_apo_status['status'] === 'active'): ?>
+            <div class="cache-actions">
+                <button type="button" class="button button-primary purge-cache" data-type="cloudflare_apo">
+                    <?php _e('Purge APO Cache', 'holler-cache-control'); ?>
+                </button>
+            </div>
+        <?php endif; ?>
     </div>
 </div>

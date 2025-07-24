@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Holler Cache Control
  * Plugin URI:        https://hollerdigital.com/
- * Description:       Control Nginx FastCGI Cache, Redis Object Cache, and Cloudflare Cache from the WordPress admin.
- * Version:          1.2.0
+ * Description:       Control Nginx FastCGI Cache, Redis Object Cache, and Cloudflare Cache from the WordPress admin. Designed for GridPane Hosted Sites
+ * Version:          1.3.0
  * Author:           Holler Digital
  * Author URI:       https://hollerdigital.com/
  * License:          GPL-2.0+
@@ -17,30 +17,57 @@ if (!defined('WPINC')) {
     die;
 }
 
-// Define Cloudflare credentials
-if (!defined('CLOUDFLARE_EMAIL')) {
-    define('CLOUDFLARE_EMAIL', 'james@hollerdigital.com');
-}
-if (!defined('CLOUDFLARE_API_KEY')) {
-    define('CLOUDFLARE_API_KEY', 'cfb08d12bd1f55cc531cadfd3d18b8700077a');
-}
-if (!defined('CLOUDFLARE_ZONE_ID')) {
-    define('CLOUDFLARE_ZONE_ID', 'd3c3e0e2f208b3acff234772b444e24a');
-}
+// Cloudflare credentials are now managed through wp-config.php constants or admin settings
+// Priority: wp-config.php constants > admin UI settings
+// No hardcoded credentials in plugin files for security
 
 /**
  * Currently plugin version.
  */
-define('HOLLER_CACHE_CONTROL_VERSION', '1.2.0');
+define('HOLLER_CACHE_CONTROL_VERSION', '1.3.0');
 
 /**
  * Plugin directory
  */
 define('HOLLER_CACHE_CONTROL_DIR', plugin_dir_path(__FILE__));
 
+// Load helper functions
+require_once HOLLER_CACHE_CONTROL_DIR . 'includes/helper-functions.php';
+
+/**
+ * Autoload classes
+ */
+spl_autoload_register(function ($class) {
+    // Project-specific namespace prefixes
+    $prefixes = [
+        'HollerCacheControl\\' => __DIR__ . '/src/',
+        'Holler\\CacheControl\\' => __DIR__ . '/src/'
+    ];
+
+    foreach ($prefixes as $prefix => $base_dir) {
+        // Check if the class uses this namespace prefix
+        $len = strlen($prefix);
+        if (strncmp($prefix, $class, $len) !== 0) {
+            continue;
+        }
+
+        // Get the relative class name
+        $relative_class = substr($class, $len);
+
+        // Replace namespace separators with directory separators
+        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+
+        // If the file exists, require it
+        if (file_exists($file)) {
+            require $file;
+            return;
+        }
+    }
+});
+
 // Load WP-CLI commands if available
 if (defined('WP_CLI') && WP_CLI) {
-    require_once HOLLER_CACHE_CONTROL_DIR . 'src/CLI/Cache_Commands.php';
+    require_once HOLLER_CACHE_CONTROL_DIR . 'src/CLI/bootstrap.php';
 }
 
 /**
@@ -72,6 +99,10 @@ class Holler_Cache_Control_Plugin {
      * Load required dependencies
      */
     private function load_dependencies() {
+        // Load core system files first
+        require_once HOLLER_CACHE_CONTROL_DIR . 'src/Core/ErrorHandler.php';
+        require_once HOLLER_CACHE_CONTROL_DIR . 'src/Core/CachePathDetector.php';
+        
         // Load core files
         require_once HOLLER_CACHE_CONTROL_DIR . 'includes/class-holler-cache-loader.php';
         require_once HOLLER_CACHE_CONTROL_DIR . 'includes/class-holler-cache-control.php';
@@ -117,7 +148,12 @@ class Holler_Cache_Control_Plugin {
      * Activation hook
      */
     public function activate() {
-        // Add any activation tasks here
+        // Disable Slack integration by default (can be re-enabled later if needed)
+        if (get_option('holler_cache_slack_disabled') === false) {
+            update_option('holler_cache_slack_disabled', true);
+        }
+        
+        // Add any other activation tasks here
     }
 
     /**

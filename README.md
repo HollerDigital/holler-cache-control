@@ -7,13 +7,16 @@ A comprehensive cache management solution for WordPress, integrating Redis Objec
 - Redis Object Cache integration and management
 - Nginx Page Cache integration
 - Cloudflare cache management with APO support
-- Admin bar quick actions for cache purging
+- Admin bar quick actions for cache purging (frontend & admin)
 - Flexible credential management (config file or UI-based)
 - Cache status overview with detailed metrics
 - One-click cache purging
 - WP-CLI commands for automation
 - Slack integration for remote cache management
 - Granular visibility controls for plugins and features
+- **NEW:** Perfmatters compatibility diagnostics and troubleshooting
+- **NEW:** Frontend admin bar functionality with performance plugin support
+- **NEW:** Intelligent plugin conflict detection and resolution guidance
 
 ## Installation
 

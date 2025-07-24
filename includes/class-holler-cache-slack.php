@@ -1,6 +1,14 @@
 <?php
 /**
  * Slack Integration for Holler Cache Control
+ * 
+ * NOTE: Slack integration is DISABLED by default as of plugin version 1.2.0+
+ * This code is preserved for potential future use but will not be active unless explicitly enabled.
+ * 
+ * To enable Slack integration:
+ * - Via WP-CLI: wp eval "\Holler\CacheControl\enable_slack_integration();"
+ * - Via code: \Holler\CacheControl\enable_slack_integration();
+ * - Via admin: Set holler_cache_slack_disabled option to false
  *
  * @package    HollerCacheControl
  * @subpackage HollerCacheControl/includes

@@ -11,7 +11,7 @@ class Cloudflare {
     public static function init() {
         if (!is_admin()) {
             header('Cache-Control: public, max-age=14400');
-            header('X-Robots-Tag: noarchive');
+            // header('X-Robots-Tag: noarchive');
         }
     }
 
@@ -25,38 +25,82 @@ class Cloudflare {
     }
 
     /**
-     * Get Cloudflare configuration status
+     * Get Cloudflare configuration status with credential source information
      *
-     * @return array Status information
+     * @return array Status information including credential sources
      */
     public static function get_status() {
         $credentials = self::get_credentials();
         $is_configured = !empty($credentials['email']) && !empty($credentials['api_key']) && !empty($credentials['zone_id']);
         
+        // Build status message with source information
+        $message = '';
+        if ($is_configured) {
+            if ($credentials['all_from_config']) {
+                $message = __('Cloudflare cache is active (credentials from wp-config.php).', 'holler-cache-control');
+            } else {
+                $config_count = 0;
+                $admin_count = 0;
+                foreach ($credentials['sources'] as $source) {
+                    if ($source === 'wp-config') $config_count++;
+                    else $admin_count++;
+                }
+                
+                if ($config_count > 0 && $admin_count > 0) {
+                    $message = sprintf(
+                        __('Cloudflare cache is active (mixed sources: %d from wp-config.php, %d from admin settings).', 'holler-cache-control'),
+                        $config_count,
+                        $admin_count
+                    );
+                } else if ($admin_count > 0) {
+                    $message = __('Cloudflare cache is active (credentials from admin settings).', 'holler-cache-control');
+                }
+            }
+        } else {
+            $message = __('Cloudflare credentials not configured. Add constants to wp-config.php or configure via admin settings.', 'holler-cache-control');
+        }
+        
         return array(
             'enabled' => true,
             'configured' => $is_configured,
             'status' => $is_configured ? 'active' : 'not_configured',
-            'message' => $is_configured ? 
-                __('Cloudflare cache is active.', 'holler-cache-control') : 
-                __('Cloudflare credentials not configured.', 'holler-cache-control')
+            'message' => $message,
+            'credential_sources' => $credentials['sources'] ?? array(),
+            'all_from_config' => $credentials['all_from_config'] ?? false
         );
     }
 
     /**
-     * Get Cloudflare credentials
+     * Get Cloudflare credentials with priority system
+     * 
+     * Priority order:
+     * 1. wp-config.php constants (CLOUDFLARE_EMAIL, CLOUDFLARE_API_KEY, CLOUDFLARE_ZONE_ID)
+     * 2. WordPress admin settings (stored in options table)
+     * 
+     * This allows for secure credential management via wp-config.php while maintaining
+     * admin UI fallback for easier setup.
      *
-     * @return array Credentials array
+     * @return array Credentials array with source information
      */
     public static function get_credentials() {
-        $email = defined('CLOUDFLARE_EMAIL') ? CLOUDFLARE_EMAIL : get_option('cloudflare_email');
-        $api_key = defined('CLOUDFLARE_API_KEY') ? CLOUDFLARE_API_KEY : get_option('cloudflare_api_key');
-        $zone_id = defined('CLOUDFLARE_ZONE_ID') ? CLOUDFLARE_ZONE_ID : get_option('cloudflare_zone_id');
+        // Check wp-config constants first (preferred method)
+        $email = defined('CLOUDFLARE_EMAIL') ? CLOUDFLARE_EMAIL : get_option('cloudflare_email', '');
+        $api_key = defined('CLOUDFLARE_API_KEY') ? CLOUDFLARE_API_KEY : get_option('cloudflare_api_key', '');
+        $zone_id = defined('CLOUDFLARE_ZONE_ID') ? CLOUDFLARE_ZONE_ID : get_option('cloudflare_zone_id', '');
+        
+        // Determine source for each credential
+        $sources = array(
+            'email_source' => defined('CLOUDFLARE_EMAIL') ? 'wp-config' : 'admin_settings',
+            'api_key_source' => defined('CLOUDFLARE_API_KEY') ? 'wp-config' : 'admin_settings',
+            'zone_id_source' => defined('CLOUDFLARE_ZONE_ID') ? 'wp-config' : 'admin_settings'
+        );
 
         return array(
-            'email' => $email,
-            'api_key' => $api_key,
-            'zone_id' => $zone_id
+            'email' => trim($email),
+            'api_key' => trim($api_key),
+            'zone_id' => trim($zone_id),
+            'sources' => $sources,
+            'all_from_config' => defined('CLOUDFLARE_EMAIL') && defined('CLOUDFLARE_API_KEY') && defined('CLOUDFLARE_ZONE_ID')
         );
     }
 

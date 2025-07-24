@@ -117,6 +117,7 @@ use Holler\CacheControl\Admin\Cache\Nginx;
             <?php endif; ?>
             <div class="cache-actions">
                 <button type="button" class="button button-primary purge-cache" data-type="nginx">
+                <span class="dashicons dashicons-performance"></span>
                     <?php _e('Purge Page Cache', 'holler-cache-control'); ?>
                 </button>
             </div>

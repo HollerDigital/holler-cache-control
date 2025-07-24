@@ -37,39 +37,130 @@ class Redis {
     }
 
     /**
-     * Purge Redis cache
+     * Execute a command safely in WordPress environment
+     *
+     * @param string $command Command to execute
+     * @return array Result of the operation
+     */
+    private static function execute_command($command) {
+        if (function_exists('wp_remote_post')) {
+            // Use WordPress HTTP API as a fallback
+            $response = wp_remote_post(admin_url('admin-ajax.php'), array(
+                'blocking' => true,
+                'timeout' => 30,
+                'body' => array(
+                    'action' => 'holler_cache_execute_command',
+                    'command' => $command
+                )
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => $response->get_error_message()
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => wp_remote_retrieve_body($response)
+            );
+        }
+
+        return array(
+            'success' => false,
+            'message' => __('Command execution not available', 'holler-cache-control')
+        );
+    }
+
+    /**
+     * Purge Redis page cache
      *
      * @return array Result of the purge operation
      */
-    public static function purge_cache() {
+    public static function purge_page_cache() {
         try {
             global $wp_object_cache;
-
-            if (!class_exists('Redis')) {
-                return array(
-                    'success' => false,
-                    'message' => __('Redis extension not installed.', 'holler-cache-control')
-                );
+            
+            // Try to flush using WordPress object cache first
+            if (is_object($wp_object_cache) && method_exists($wp_object_cache, 'flush')) {
+                $wp_object_cache->flush();
             }
 
-            if (!is_object($wp_object_cache) || !method_exists($wp_object_cache, 'flush')) {
-                return array(
-                    'success' => false,
-                    'message' => __('Redis object cache not available.', 'holler-cache-control')
-                );
+            // Use WordPress cache clearing functions
+            if (function_exists('wp_cache_flush')) {
+                wp_cache_flush();
             }
 
-            $wp_object_cache->flush();
             return array(
                 'success' => true,
-                'message' => __('Redis cache purged successfully.', 'holler-cache-control')
+                'message' => __('Redis page cache purged successfully.', 'holler-cache-control')
             );
         } catch (\Exception $e) {
             return array(
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => sprintf(__('Failed to purge Redis page cache: %s', 'holler-cache-control'), $e->getMessage())
             );
         }
+    }
+
+    /**
+     * Purge Redis object cache
+     *
+     * @return array Result of the purge operation
+     */
+    public static function purge_object_cache() {
+        try {
+            global $wp_object_cache;
+            
+            // Try to flush using WordPress object cache
+            if (is_object($wp_object_cache) && method_exists($wp_object_cache, 'flush')) {
+                $wp_object_cache->flush();
+            }
+
+            // Use WordPress cache clearing functions
+            if (function_exists('wp_cache_flush')) {
+                wp_cache_flush();
+            }
+
+            return array(
+                'success' => true,
+                'message' => __('Redis object cache purged successfully.', 'holler-cache-control')
+            );
+        } catch (\Exception $e) {
+            return array(
+                'success' => false,
+                'message' => sprintf(__('Failed to purge Redis object cache: %s', 'holler-cache-control'), $e->getMessage())
+            );
+        }
+    }
+
+    /**
+     * Purge all Redis caches
+     *
+     * @return array Result of the purge operation
+     */
+    public static function purge_cache() {
+        $page_result = self::purge_page_cache();
+        $object_result = self::purge_object_cache();
+
+        if ($page_result['success'] && $object_result['success']) {
+            return array(
+                'success' => true,
+                'message' => __('All Redis caches purged successfully.', 'holler-cache-control')
+            );
+        }
+
+        return array(
+            'success' => false,
+            'message' => sprintf(
+                __('Failed to purge Redis caches: %s', 'holler-cache-control'),
+                implode(', ', array_filter([
+                    !$page_result['success'] ? $page_result['message'] : null,
+                    !$object_result['success'] ? $object_result['message'] : null
+                ]))
+            )
+        );
     }
 
     /**
@@ -101,9 +192,21 @@ class Redis {
             // Get uptime in a human-readable format
             $uptime = self::format_uptime($info['uptime_in_seconds']);
 
+            // Parse database info to get key count
+            $keys = 0;
+            if (isset($info['db0']) && is_string($info['db0'])) {
+                // Parse db0 string like "keys=123,expires=45,avg_ttl=0"
+                if (preg_match('/keys=(\d+)/', $info['db0'], $matches)) {
+                    $keys = (int) $matches[1];
+                }
+            } elseif (isset($info['db0']) && is_array($info['db0'])) {
+                // Handle case where db0 is already an array
+                $keys = count($info['db0']);
+            }
+
             return array(
                 'memory' => $memory,
-                'keys' => $info['db0'] ? count($info['db0']) : 0,
+                'keys' => $keys,
                 'clients' => $info['connected_clients'],
                 'uptime' => $uptime
             );

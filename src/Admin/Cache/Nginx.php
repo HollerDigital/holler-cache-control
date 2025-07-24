@@ -7,9 +7,9 @@
 
 namespace Holler\CacheControl\Admin\Cache;
 
-use function Holler\CacheControl\get_nginx_cache_method;
-use function Holler\CacheControl\get_nginx_purge_method;
-use function Holler\CacheControl\get_redis_settings;
+use Holler\CacheControl\Core\ErrorHandler;
+use Holler\CacheControl\Core\CachePathDetector;
+use function Holler\CacheControl\{get_nginx_cache_method, get_nginx_purge_method, get_redis_settings};
 
 class Nginx {
     /**
@@ -81,7 +81,7 @@ class Nginx {
     }
 
     /**
-     * Purge Nginx cache
+     * Purge Nginx cache with enhanced error handling and path detection
      *
      * @return array Result of the purge operation
      */
@@ -95,83 +95,236 @@ class Nginx {
                 );
             }
 
-            // Try GridPane's action hook first
+            // Try GridPane's action hook first (highest priority)
             if (has_action('rt_nginx_helper_purge_all')) {
                 do_action('rt_nginx_helper_purge_all');
+                ErrorHandler::log(
+                    'Nginx cache purged via GridPane action hook',
+                    ErrorHandler::LOG_LEVEL_INFO,
+                    array('method' => 'gridpane_hook')
+                );
                 return array(
                     'success' => true,
                     'message' => __('Page cache purged via GridPane.', 'holler-cache-control')
                 );
             }
 
-            // Fallback: Try to clear cache directly
-            $cache_path = '/var/run/nginx-cache';
-            if (is_dir($cache_path)) {
-                // Use shell_exec to clear cache files
-                $result = shell_exec('rm -rf ' . escapeshellarg($cache_path . '/*'));
-                if ($result !== false) {
-                    return array(
-                        'success' => true,
-                        'message' => __('Page cache purged directly.', 'holler-cache-control')
-                    );
-                }
+            // Enhanced cache path detection and clearing
+            $purge_results = self::purge_detected_cache_paths();
+            if ($purge_results['success']) {
+                return $purge_results;
             }
 
             // If Redis is being used for page caching
             if ($status['type'] === 'redis') {
-                if (class_exists('Redis')) {
-                    try {
-                        $redis_settings = get_redis_settings();
-                        $redis = new \Redis();
-                        $redis->connect(
-                            $redis_settings['hostname'],
-                            $redis_settings['port'],
-                            1 // 1 second timeout
-                        );
-                        
-                        if (!empty($redis_settings['password'])) {
-                            if (!empty($redis_settings['username'])) {
-                                $redis->auth([$redis_settings['username'], $redis_settings['password']]);
-                            } else {
-                                $redis->auth($redis_settings['password']);
-                            }
-                        }
-                        
-                        if (!empty($redis_settings['database'])) {
-                            $redis->select((int)$redis_settings['database']);
-                        }
-
-                        $prefix = defined('RT_WP_NGINX_HELPER_REDIS_PREFIX') ? RT_WP_NGINX_HELPER_REDIS_PREFIX : '';
-                        if ($prefix) {
-                            $keys = $redis->keys($prefix . '*');
-                            if (!empty($keys)) {
-                                $redis->del($keys);
-                            }
-                        } else {
-                            $redis->flushDb();
-                        }
-
-                        return array(
-                            'success' => true,
-                            'message' => __('Redis page cache purged directly.', 'holler-cache-control')
-                        );
-                    } catch (\Exception $e) {
-                        error_log('Failed to clear Redis page cache: ' . $e->getMessage());
-                    }
+                $redis_result = self::purge_redis_page_cache();
+                if ($redis_result['success']) {
+                    return $redis_result;
                 }
+            }
+
+            // If all methods failed, return detailed error information
+            ErrorHandler::log(
+                'All Nginx cache purge methods failed',
+                ErrorHandler::LOG_LEVEL_ERROR,
+                array(
+                    'status_type' => $status['type'],
+                    'gridpane_hook_available' => has_action('rt_nginx_helper_purge_all'),
+                    'redis_available' => class_exists('Redis')
+                )
+            );
+
+            return array(
+                'success' => false,
+                'message' => __('Failed to purge page cache. No valid cache clearing method available.', 'holler-cache-control'),
+                'debug_info' => WP_DEBUG ? 'Check error logs for detailed information' : null
+            );
+
+        } catch (\Exception $e) {
+            return ErrorHandler::handle_cache_error('nginx_purge', $e, array(
+                'cache_status' => isset($status) ? $status : 'unknown'
+            ));
+        }
+    }
+
+    /**
+     * Purge cache using detected cache paths
+     *
+     * @return array Result of the purge operation
+     */
+    private static function purge_detected_cache_paths() {
+        try {
+            // Get all detected cache paths
+            $detected_paths = CachePathDetector::detect_all_paths();
+            $config_paths = CachePathDetector::detect_from_config();
+            
+            // Combine and prioritize paths
+            $all_paths = array_merge($detected_paths, array_values($config_paths));
+            
+            if (empty($all_paths)) {
+                return array(
+                    'success' => false,
+                    'message' => __('No cache paths detected for clearing.', 'holler-cache-control')
+                );
+            }
+
+            $cleared_paths = array();
+            $failed_paths = array();
+
+            foreach ($all_paths as $path_info) {
+                $path = $path_info['path'];
+                
+                if (!$path_info['metadata']['writable']) {
+                    $failed_paths[] = array(
+                        'path' => $path,
+                        'reason' => 'Not writable'
+                    );
+                    continue;
+                }
+
+                try {
+                    // Clear cache files
+                    $result = shell_exec('rm -rf ' . escapeshellarg($path . '/*') . ' 2>&1');
+                    
+                    if ($result === null || strpos($result, 'Permission denied') !== false) {
+                        $failed_paths[] = array(
+                            'path' => $path,
+                            'reason' => 'Permission denied or command failed'
+                        );
+                    } else {
+                        $cleared_paths[] = $path;
+                        ErrorHandler::log(
+                            'Cache path cleared successfully',
+                            ErrorHandler::LOG_LEVEL_INFO,
+                            array('path' => $path, 'method' => 'direct_file_removal')
+                        );
+                    }
+                } catch (\Exception $e) {
+                    $failed_paths[] = array(
+                        'path' => $path,
+                        'reason' => $e->getMessage()
+                    );
+                }
+            }
+
+            if (!empty($cleared_paths)) {
+                $message = sprintf(
+                    __('Page cache cleared from %d path(s): %s', 'holler-cache-control'),
+                    count($cleared_paths),
+                    implode(', ', array_map('basename', $cleared_paths))
+                );
+                
+                if (!empty($failed_paths)) {
+                    $message .= sprintf(
+                        __(' (%d path(s) failed)', 'holler-cache-control'),
+                        count($failed_paths)
+                    );
+                }
+
+                return array(
+                    'success' => true,
+                    'message' => $message,
+                    'cleared_paths' => $cleared_paths,
+                    'failed_paths' => $failed_paths
+                );
             }
 
             return array(
                 'success' => false,
-                'message' => __('Failed to purge page cache. No valid cache clearing method available.', 'holler-cache-control')
+                'message' => __('Failed to clear cache from any detected paths.', 'holler-cache-control'),
+                'failed_paths' => $failed_paths
             );
 
         } catch (\Exception $e) {
-            error_log('Holler Cache Control - Page cache purge error: ' . $e->getMessage());
+            return ErrorHandler::handle_cache_error('nginx_path_detection', $e);
+        }
+    }
+
+    /**
+     * Purge Redis page cache with enhanced error handling
+     *
+     * @return array Result of the purge operation
+     */
+    private static function purge_redis_page_cache() {
+        if (!class_exists('Redis')) {
             return array(
                 'success' => false,
-                'message' => sprintf(__('Failed to purge page cache: %s', 'holler-cache-control'), $e->getMessage())
+                'message' => __('Redis PHP extension not available.', 'holler-cache-control')
             );
+        }
+
+        try {
+            $redis_settings = get_redis_settings();
+            $redis = new \Redis();
+            
+            // Connect with timeout
+            $connected = $redis->connect(
+                $redis_settings['hostname'],
+                (int) $redis_settings['port'],
+                2 // 2 second timeout
+            );
+            
+            if (!$connected) {
+                throw new \Exception('Failed to connect to Redis server');
+            }
+            
+            // Authenticate if needed
+            if (!empty($redis_settings['password'])) {
+                if (!empty($redis_settings['username'])) {
+                    $auth_result = $redis->auth([$redis_settings['username'], $redis_settings['password']]);
+                } else {
+                    $auth_result = $redis->auth($redis_settings['password']);
+                }
+                
+                if (!$auth_result) {
+                    throw new \Exception('Redis authentication failed');
+                }
+            }
+            
+            // Select database
+            if (!empty($redis_settings['database'])) {
+                $redis->select((int)$redis_settings['database']);
+            }
+
+            // Clear cache with prefix awareness
+            $prefix = defined('RT_WP_NGINX_HELPER_REDIS_PREFIX') ? RT_WP_NGINX_HELPER_REDIS_PREFIX : '';
+            $keys_cleared = 0;
+            
+            if ($prefix) {
+                $keys = $redis->keys($prefix . '*');
+                if (!empty($keys)) {
+                    $keys_cleared = $redis->del($keys);
+                }
+            } else {
+                $keys_cleared = $redis->flushDb();
+            }
+
+            ErrorHandler::log(
+                'Redis page cache cleared successfully',
+                ErrorHandler::LOG_LEVEL_INFO,
+                array(
+                    'keys_cleared' => $keys_cleared,
+                    'prefix' => $prefix,
+                    'database' => $redis_settings['database']
+                )
+            );
+
+            return array(
+                'success' => true,
+                'message' => sprintf(
+                    __('Redis page cache purged successfully (%d keys cleared).', 'holler-cache-control'),
+                    $keys_cleared
+                )
+            );
+
+        } catch (\Exception $e) {
+            return ErrorHandler::handle_cache_error('redis_page_cache', $e, array(
+                'redis_settings' => array(
+                    'hostname' => $redis_settings['hostname'] ?? 'not_set',
+                    'port' => $redis_settings['port'] ?? 'not_set',
+                    'database' => $redis_settings['database'] ?? 'not_set'
+                )
+            ));
         }
     }
 
@@ -239,10 +392,10 @@ class Nginx {
                     'hits' => $info['keyspace_hits'] ?? 0,
                     'misses' => $info['keyspace_misses'] ?? 0,
                     'config' => array(
-                        'max_memory' => size_format($info['maxmemory']),
-                        'eviction_policy' => $info['maxmemory_policy'],
-                        'persistence' => $info['persistence'],
-                        'uptime' => self::format_uptime($info['uptime_in_seconds'])
+                        'max_memory' => size_format($info['maxmemory'] ?? 0),
+                        'eviction_policy' => $info['maxmemory_policy'] ?? 'noeviction',
+                        'persistence' => $info['persistence'] ?? 'none',
+                        'uptime' => self::format_uptime($info['uptime_in_seconds'] ?? 0)
                     )
                 );
             } catch (\Exception $e) {

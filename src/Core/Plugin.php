@@ -80,19 +80,20 @@ class Plugin {
         // Add admin menu items
         $this->loader->add_action('admin_menu', $admin, 'remove_old_menu_items', 999); // Run after other menu items are added
         $this->loader->add_action('admin_init', $admin, 'register_settings');
-        $this->loader->add_action('admin_bar_menu', $admin, 'add_admin_bar_menu', 100);
+        $this->loader->add_action('admin_bar_menu', $admin, 'admin_bar_menu', 100);
+        // Remove other cache plugin admin bar items at higher priority
+        $this->loader->add_action('wp_before_admin_bar_render', $admin, 'remove_cache_admin_bar_items', 999);
         $this->loader->add_action('admin_head', $admin, 'admin_bar_styles');
+        $this->loader->add_action('wp_head', $admin, 'admin_bar_styles'); // Also load on frontend
+        
+        // Ensure jQuery is loaded for admin bar functionality on frontend
+        $this->loader->add_action('wp_enqueue_scripts', $admin, 'enqueue_frontend_admin_bar_scripts');
+        $this->loader->add_action('wp_footer', $admin, 'add_frontend_admin_bar_script');
 
         // Register settings
         $this->loader->add_action('admin_init', $admin, 'register_settings');
 
-        // Register AJAX handlers for cache status and purging
-        $this->loader->add_action('wp_ajax_holler_cache_status', $admin, 'handle_cache_status');
-        $this->loader->add_action('wp_ajax_holler_purge_all', $admin, 'handle_purge_cache');
-        $this->loader->add_action('wp_ajax_holler_purge_nginx', $admin, 'handle_purge_cache');
-        $this->loader->add_action('wp_ajax_holler_purge_redis', $admin, 'handle_purge_cache');
-        $this->loader->add_action('wp_ajax_holler_purge_cloudflare', $admin, 'handle_purge_cache');
-        $this->loader->add_action('wp_ajax_holler_purge_cloudflare_apo', $admin, 'handle_purge_cache');
+        // AJAX handlers are now registered in Tools.php init_ajax_handlers() method
 
         // Enqueue admin scripts
         $this->loader->add_action('admin_enqueue_scripts', $admin, 'enqueue_scripts');
