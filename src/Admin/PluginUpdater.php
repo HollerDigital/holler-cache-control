@@ -84,17 +84,17 @@ class Holler_Cache_Control_Plugin_Updater {
             return $info;
         }
         
-        // Define plugin icons (using default WordPress plugin icon for now)
+        // Define plugin icons
         $info->icons = array(
-            '1x'      => 'https://ps.w.org/holler-cache-control/assets/icon-128x128.png',
-            '2x'      => 'https://ps.w.org/holler-cache-control/assets/icon-256x256.png',
-            'default' => 'https://ps.w.org/holler-cache-control/assets/icon-128x128.png',
+            '1x'      => plugins_url('assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE),
+            '2x'      => plugins_url('assets/img/icon-256x256.png', HOLLER_CACHE_CONTROL_FILE),
+            'default' => plugins_url('assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE),
         );
         
-        // Add banners
+        // Add banners for professional appearance
         $info->banners = array(
-            'low'  => 'https://ps.w.org/holler-cache-control/assets/banner-772x250.png',
-            'high' => 'https://ps.w.org/holler-cache-control/assets/banner-1544x500.png',
+            'low'  => plugins_url('assets/img/icon-256x256.png', HOLLER_CACHE_CONTROL_FILE),
+            'high' => plugins_url('assets/img/icon-256x256.png', HOLLER_CACHE_CONTROL_FILE),
         );
         
         // Add additional metadata

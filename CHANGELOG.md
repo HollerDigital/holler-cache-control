@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2025-01-24
+
+### Added
+- **Branded Plugin Details Modal**: Integrated official Holler Digital logo icons and banners into the plugin update checker modal
+- **Professional Branding**: Plugin details modal now displays consistent Holler Digital branding matching the Holler Elementor plugin
+- **Logo Assets**: Added high-resolution Holler logo icons (128x128 and 256x256) for professional appearance in WordPress admin
+
+### Changed
+- **Plugin Updater**: Enhanced PluginUpdater class to use local Holler logo assets instead of placeholder WordPress.org URLs
+- **Visual Consistency**: Plugin details modal now matches the branded experience across all Holler Digital plugins
+
+### Technical Details
+- Copied official Holler logo assets from Holler Elementor plugin for brand consistency
+- Updated `add_icons_to_update_info()` method to serve logos via `plugins_url()` with proper asset paths
+- Removed placeholder banner URLs and consolidated icon definitions for cleaner code
+- Icons are served in both 1x and 2x resolutions for high-DPI display support
+
 ## [1.3.6] - 2025-01-24
 
 ### Added
