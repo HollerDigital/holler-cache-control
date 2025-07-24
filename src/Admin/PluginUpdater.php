@@ -37,22 +37,43 @@ class Holler_Cache_Control_Plugin_Updater {
      * @param string $branch      GitHub branch to use for updates.
      */
     public function __construct($repository, $main_file, $slug, $branch = 'master') {
-        // Make sure the plugin update checker is loaded
-        require_once HOLLER_CACHE_CONTROL_DIR . 'vendor/plugin-update-checker/plugin-update-checker.php';
+        // Check if plugin update checker library exists
+        $update_checker_path = HOLLER_CACHE_CONTROL_DIR . 'vendor/plugin-update-checker/plugin-update-checker.php';
+        
+        if (!file_exists($update_checker_path)) {
+            // Log error and return early if library is missing
+            error_log('Holler Cache Control: plugin-update-checker library not found at: ' . $update_checker_path);
+            return;
+        }
+        
+        // Load the plugin update checker library
+        require_once $update_checker_path;
+        
+        // Check if the factory class exists after loading
+        if (!class_exists('Puc_v4_Factory')) {
+            error_log('Holler Cache Control: Puc_v4_Factory class not found after loading plugin-update-checker');
+            return;
+        }
         
         // Initialize the update checker
-        $this->update_checker = Puc_v4_Factory::buildUpdateChecker(
-            $repository,
-            $main_file,
-            $slug
-        );
-        
-        // Set the branch that contains the stable release
-        $this->update_checker->setBranch($branch);
-        $this->update_checker->getVcsApi()->enableReleaseAssets();
-        
-        // Add filters to include plugin icons
-        add_filter('puc_request_info_result-' . $slug, array($this, 'add_icons_to_update_info'));
+        try {
+            $this->update_checker = Puc_v4_Factory::buildUpdateChecker(
+                $repository,
+                $main_file,
+                $slug
+            );
+            
+            // Set the branch that contains the stable release
+            $this->update_checker->setBranch($branch);
+            $this->update_checker->getVcsApi()->enableReleaseAssets();
+            
+            // Add filters to include plugin icons
+            add_filter('puc_request_info_result-' . $slug, array($this, 'add_icons_to_update_info'));
+            
+        } catch (Exception $e) {
+            error_log('Holler Cache Control: Failed to initialize plugin updater: ' . $e->getMessage());
+            $this->update_checker = null;
+        }
     }
     
     /**
@@ -82,7 +103,7 @@ class Holler_Cache_Control_Plugin_Updater {
      * @param string $token GitHub access token.
      */
     public function set_authentication($token) {
-        if (!empty($token)) {
+        if (!empty($token) && $this->update_checker !== null) {
             $this->update_checker->setAuthentication($token);
         }
     }

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2025-01-24
+
+### Fixed
+- **CRITICAL**: Fixed PHP fatal error "Class 'Puc_v4_Factory' not found" on fresh plugin installations
+- Added comprehensive error handling for plugin-update-checker library loading
+- Made plugin-update-checker completely optional to prevent fatal errors
+- Added proper null checks and try-catch blocks for update checker initialization
+- Plugin now works correctly even if vendor directory is missing
+
+### Enhanced
+- Improved plugin stability and error handling
+- Added detailed error logging for troubleshooting update checker issues
+- Enhanced plugin initialization process with graceful fallbacks
+
 ## [1.3.1] - 2025-01-24
 
 ### Added
