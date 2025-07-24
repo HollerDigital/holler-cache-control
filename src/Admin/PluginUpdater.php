@@ -67,9 +67,6 @@ class Holler_Cache_Control_Plugin_Updater {
             $this->update_checker->setBranch($branch);
             $this->update_checker->getVcsApi()->enableReleaseAssets();
             
-            // Add filters to include plugin icons
-            add_filter('puc_request_info_result-' . $slug, array($this, 'add_icons_to_update_info'));
-            
         } catch (Exception $e) {
             error_log('Holler Cache Control: Failed to initialize plugin updater: ' . $e->getMessage());
             $this->update_checker = null;
