@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2025-01-24
+
+### Added
+- **Smart Auto-Purge Detection**: Implemented intelligent detection to prevent cache purging during page builder editing sessions
+- **Elementor Compatibility**: Added comprehensive support for Elementor editing without AJAX timeouts or 504 Gateway errors
+- **Multi-Page Builder Support**: Extended compatibility to Divi, Beaver Builder, Visual Composer, and Fusion Builder
+- **WordPress Block Editor Support**: Enhanced compatibility with Gutenberg auto-saves and draft operations
+
+### Fixed
+- **Critical AJAX Timeout Issue**: Resolved 504 Gateway Timeout errors during Elementor editing sessions
+- **Page Builder Conflicts**: Eliminated cache purging interference with live page builder editing
+- **Auto-Save Interruptions**: Prevented cache operations from blocking editor auto-save functionality
+- **Performance Bottlenecks**: Reduced server load during intensive editing sessions
+
+### Changed
+- **Auto-Purge Logic**: All automatic cache purging hooks now use smart detection to avoid editor conflicts
+- **Hook Implementation**: Updated `save_post`, `delete_post`, and other content hooks to use `purge_all_caches_with_detection()`
+- **Logging Enhancement**: Added debug logging when auto-purge is skipped during editing sessions
+
+### Technical Details
+- Added `should_skip_auto_purge()` method with detection for:
+  - Elementor AJAX actions (`elementor`, `elementor_ajax`, `elementor_save_builder_content`)
+  - WordPress block editor operations (`heartbeat`, `autosave`, `gutenberg`)
+  - Other page builders (`divi`, `beaver`, `vc_`, `fusion`)
+  - Post revisions, auto-drafts, and preview requests
+  - Draft saves vs. published content updates
+- Added `purge_all_caches_with_detection()` wrapper method for intelligent cache purging
+- Updated all auto-purge hooks to prevent conflicts while maintaining cache freshness
+- Maintains backward compatibility with existing manual purge functionality
+
+This release resolves the critical compatibility issue between the cache plugin and modern page builders, ensuring smooth editing experience while maintaining effective cache management.
+
 ## [1.3.7] - 2025-01-24
 
 ### Added

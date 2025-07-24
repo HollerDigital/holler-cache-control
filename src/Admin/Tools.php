@@ -344,47 +344,47 @@ class Tools {
             'purge_daily_scheduled' => true
         ));
 
-        // Post/Page updates
+        // Post/Page updates - use smart detection to prevent editor conflicts
         if (!empty($settings['purge_on_post_save'])) {
-            add_action('save_post', array($this, 'purge_all_caches'));
+            add_action('save_post', array($this, 'purge_all_caches_with_detection'));
         }
         if (!empty($settings['purge_on_post_delete'])) {
-            add_action('delete_post', array($this, 'purge_all_caches'));
+            add_action('delete_post', array($this, 'purge_all_caches_with_detection'));
         }
         if (!empty($settings['purge_on_post_trash'])) {
-            add_action('wp_trash_post', array($this, 'purge_all_caches'));
-            add_action('untrash_post', array($this, 'purge_all_caches'));
+            add_action('wp_trash_post', array($this, 'purge_all_caches_with_detection'));
+            add_action('untrash_post', array($this, 'purge_all_caches_with_detection'));
         }
 
-        // Theme customization
+        // Theme customization - use smart detection for customizer conflicts
         if (!empty($settings['purge_on_customizer_save'])) {
-            add_action('customize_save_after', array($this, 'purge_all_caches'));
+            add_action('customize_save_after', array($this, 'purge_all_caches_with_detection'));
         }
         if (!empty($settings['purge_on_theme_switch'])) {
-            add_action('switch_theme', array($this, 'purge_all_caches'));
+            add_action('switch_theme', array($this, 'purge_all_caches_with_detection'));
         }
 
-        // Plugin activation/deactivation
+        // Plugin activation/deactivation - use smart detection
         if (!empty($settings['purge_on_plugin_activation'])) {
-            add_action('activated_plugin', array($this, 'purge_all_caches'));
-            add_action('deactivated_plugin', array($this, 'purge_all_caches'));
+            add_action('activated_plugin', array($this, 'purge_all_caches_with_detection'));
+            add_action('deactivated_plugin', array($this, 'purge_all_caches_with_detection'));
         }
 
-        // Menu updates
+        // Menu updates - use smart detection
         if (!empty($settings['purge_on_menu_update'])) {
-            add_action('wp_update_nav_menu', array($this, 'purge_all_caches'));
-            add_action('wp_delete_nav_menu', array($this, 'purge_all_caches'));
+            add_action('wp_update_nav_menu', array($this, 'purge_all_caches_with_detection'));
+            add_action('wp_delete_nav_menu', array($this, 'purge_all_caches_with_detection'));
         }
 
-        // Widget updates
+        // Widget updates - use smart detection
         if (!empty($settings['purge_on_widget_update'])) {
-            add_action('update_option_sidebars_widgets', array($this, 'purge_all_caches'));
-            add_action('sidebar_admin_setup', array($this, 'purge_all_caches'));
+            add_action('update_option_sidebars_widgets', array($this, 'purge_all_caches_with_detection'));
+            add_action('sidebar_admin_setup', array($this, 'purge_all_caches_with_detection'));
         }
 
-        // Core updates
+        // Core updates - use smart detection
         if (!empty($settings['purge_on_core_update'])) {
-            add_action('_core_updated_successfully', array($this, 'purge_all_caches'));
+            add_action('_core_updated_successfully', array($this, 'purge_all_caches_with_detection'));
         }
 
         // Scheduled purge
@@ -392,7 +392,7 @@ class Tools {
             if (!wp_next_scheduled('holler_purge_all_caches_daily')) {
                 wp_schedule_event(time(), 'daily', 'holler_purge_all_caches_daily');
             }
-            add_action('holler_purge_all_caches_daily', array($this, 'purge_all_caches'));
+            add_action('holler_purge_all_caches_daily', array($this, 'purge_all_caches_with_detection'));
         } else {
             // Remove scheduled event if disabled
             $timestamp = wp_next_scheduled('holler_purge_all_caches_daily');
@@ -1410,6 +1410,182 @@ class Tools {
             'cloudflare' => \Holler\CacheControl\Admin\Cache\Cloudflare::get_status(),
             'cloudflare-apo' => \Holler\CacheControl\Admin\Cache\CloudflareAPO::get_status()
         );
+    }
+
+    /**
+     * Smart detection to determine if we should skip auto-purge during editing sessions
+     * Prevents AJAX timeouts and conflicts with page builders like Elementor
+     * 
+     * @return bool True if auto-purge should be skipped, false otherwise
+     */
+    private function should_skip_auto_purge() {
+        // Skip if we're in an AJAX request from page builders
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            // Check for Elementor editing
+            if (isset($_POST['action']) && (
+                strpos($_POST['action'], 'elementor') !== false ||
+                strpos($_POST['action'], 'elementor_ajax') !== false ||
+                $_POST['action'] === 'elementor_save_builder_content' ||
+                $_POST['action'] === 'elementor_render_widget'
+            )) {
+                return true;
+            }
+
+            // Check for WordPress block editor (Gutenberg) auto-saves
+            if (isset($_POST['action']) && (
+                $_POST['action'] === 'heartbeat' ||
+                $_POST['action'] === 'autosave' ||
+                strpos($_POST['action'], 'gutenberg') !== false
+            )) {
+                return true;
+            }
+
+            // Check for other common page builders
+            if (isset($_POST['action']) && (
+                strpos($_POST['action'], 'divi') !== false ||
+                strpos($_POST['action'], 'beaver') !== false ||
+                strpos($_POST['action'], 'vc_') !== false || // Visual Composer
+                strpos($_POST['action'], 'fusion') !== false // Avada Fusion Builder
+            )) {
+                return true;
+            }
+        }
+
+        // Skip if Elementor is actively editing (check URL parameters)
+        if (isset($_GET['elementor-preview']) || isset($_GET['elementor_library'])) {
+            return true;
+        }
+
+        // Skip if we're in WordPress block editor
+        if (function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+            if ($screen && $screen->is_block_editor()) {
+                return true;
+            }
+        }
+
+        // Skip for post revisions and auto-drafts
+        if (isset($_POST['post_status']) && (
+            $_POST['post_status'] === 'auto-draft' ||
+            $_POST['post_status'] === 'inherit' // revisions
+        )) {
+            return true;
+        }
+
+        // Skip for preview requests
+        if (isset($_POST['wp-preview']) && $_POST['wp-preview'] === 'dopreview') {
+            return true;
+        }
+
+        // Skip if this is just a draft save (not a publish)
+        if (isset($_POST['save']) || isset($_POST['draft'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Enhanced purge_all_caches method with smart detection
+     * Only purges if not in an editing session that could cause timeouts
+     */
+    public function purge_all_caches_with_detection() {
+        // Skip auto-purge during editing sessions to prevent AJAX timeouts
+        if ($this->should_skip_auto_purge()) {
+            error_log('Holler Cache Control: Skipping auto-purge during editing session to prevent AJAX timeout');
+            return;
+        }
+
+        // Proceed with normal cache purging
+        $this->purge_all_caches();
+    }
+
+    /**
+     * Smart detection to determine if we should skip auto-purge during editing sessions
+     * Prevents AJAX timeouts and conflicts with page builders like Elementor
+     * 
+     * @return bool True if auto-purge should be skipped, false otherwise
+     */
+    private function should_skip_auto_purge() {
+        // Skip if we're in an AJAX request from page builders
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            // Check for Elementor editing
+            if (isset($_POST['action']) && (
+                strpos($_POST['action'], 'elementor') !== false ||
+                strpos($_POST['action'], 'elementor_ajax') !== false ||
+                $_POST['action'] === 'elementor_save_builder_content' ||
+                $_POST['action'] === 'elementor_render_widget'
+            )) {
+                return true;
+            }
+
+            // Check for WordPress block editor (Gutenberg) auto-saves
+            if (isset($_POST['action']) && (
+                $_POST['action'] === 'heartbeat' ||
+                $_POST['action'] === 'autosave' ||
+                strpos($_POST['action'], 'gutenberg') !== false
+            )) {
+                return true;
+            }
+
+            // Check for other common page builders
+            if (isset($_POST['action']) && (
+                strpos($_POST['action'], 'divi') !== false ||
+                strpos($_POST['action'], 'beaver') !== false ||
+                strpos($_POST['action'], 'vc_') !== false || // Visual Composer
+                strpos($_POST['action'], 'fusion') !== false // Avada Fusion Builder
+            )) {
+                return true;
+            }
+        }
+
+        // Skip if Elementor is actively editing (check URL parameters)
+        if (isset($_GET['elementor-preview']) || isset($_GET['elementor_library'])) {
+            return true;
+        }
+
+        // Skip if we're in WordPress block editor
+        if (function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+            if ($screen && $screen->is_block_editor()) {
+                return true;
+            }
+        }
+
+        // Skip for post revisions and auto-drafts
+        if (isset($_POST['post_status']) && (
+            $_POST['post_status'] === 'auto-draft' ||
+            $_POST['post_status'] === 'inherit' // revisions
+        )) {
+            return true;
+        }
+
+        // Skip for preview requests
+        if (isset($_POST['wp-preview']) && $_POST['wp-preview'] === 'dopreview') {
+            return true;
+        }
+
+        // Skip if this is just a draft save (not a publish)
+        if (isset($_POST['save']) || isset($_POST['draft'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Enhanced purge_all_caches method with smart detection
+     * Only purges if not in an editing session that could cause timeouts
+     */
+    public function purge_all_caches_with_detection() {
+        // Skip auto-purge during editing sessions to prevent AJAX timeouts
+        if ($this->should_skip_auto_purge()) {
+            error_log('Holler Cache Control: Skipping auto-purge during editing session to prevent AJAX timeout');
+            return;
+        }
+
+        // Proceed with normal cache purging
+        $this->purge_all_caches();
     }
 
     /**
