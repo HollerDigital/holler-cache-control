@@ -17,12 +17,26 @@ A comprehensive cache management solution for WordPress, integrating Redis Objec
 - **NEW:** Perfmatters compatibility diagnostics and troubleshooting
 - **NEW:** Frontend admin bar functionality with performance plugin support
 - **NEW:** Intelligent plugin conflict detection and resolution guidance
+- **NEW:** Automatic GitHub-based plugin updates with one-click installation
 
 ## Installation
 
 1. Upload the plugin files to the `/wp-content/plugins/holler-cache-control` directory
 2. Activate the plugin through the 'Plugins' menu in WordPress
 3. Configure your Cloudflare credentials either through the settings page or via wp-config.php
+
+## Automatic Updates
+
+This plugin includes an automatic update system that checks for new releases from the GitHub repository. Updates will appear in your WordPress admin under **Plugins → Installed Plugins** when new versions are available.
+
+### Update Process
+1. **Automatic Detection**: The plugin automatically checks for updates from GitHub
+2. **Update Notifications**: You'll see update notifications in your WordPress admin
+3. **One-Click Updates**: Click "Update Now" to install the latest version
+4. **Release Notes**: View changelog and release information before updating
+
+### Manual Updates
+If you prefer manual updates, you can always download the latest version from the [GitHub repository](https://github.com/HollerDigital/holler-cache-control) and install it manually.
 
 ## Configuration
 

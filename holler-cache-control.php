@@ -3,7 +3,7 @@
  * Plugin Name:       Holler Cache Control
  * Plugin URI:        https://hollerdigital.com/
  * Description:       Control Nginx FastCGI Cache, Redis Object Cache, and Cloudflare Cache from the WordPress admin. Designed for GridPane Hosted Sites
- * Version:          1.3.0
+ * Version:          1.3.1
  * Author:           Holler Digital
  * Author URI:       https://hollerdigital.com/
  * License:          GPL-2.0+
@@ -24,7 +24,7 @@ if (!defined('WPINC')) {
 /**
  * Currently plugin version.
  */
-define('HOLLER_CACHE_CONTROL_VERSION', '1.3.0');
+define('HOLLER_CACHE_CONTROL_VERSION', '1.3.1');
 
 /**
  * Plugin directory
@@ -33,6 +33,20 @@ define('HOLLER_CACHE_CONTROL_DIR', plugin_dir_path(__FILE__));
 
 // Load helper functions
 require_once HOLLER_CACHE_CONTROL_DIR . 'includes/helper-functions.php';
+
+// Include the plugin updater class
+require_once HOLLER_CACHE_CONTROL_DIR . 'src/Admin/PluginUpdater.php';
+
+// Initialize the plugin updater
+$updater = new Holler_Cache_Control_Plugin_Updater(
+    'https://github.com/HollerDigital/holler-cache-control',
+    __FILE__,
+    'holler-cache-control',
+    'master'
+);
+
+// Optional: If you're using a private repository, specify the access token like this:
+// $updater->set_authentication('your-token-here');
 
 /**
  * Autoload classes
