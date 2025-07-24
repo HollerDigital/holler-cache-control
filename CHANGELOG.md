@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2025-01-24
+
+### Added
+- **Cloudflare Security Tab**: New dedicated Security tab for comprehensive Cloudflare security management
+- **Security Level Control**: Full security level management (Essentially Off, Low, Medium, High, I'm Under Attack!)
+- **Bot Fight Mode Toggle**: One-click enable/disable bot protection with real-time status
+- **Browser Integrity Check**: Toggle browser integrity checking to block malicious requests
+- **Email Obfuscation**: Enable/disable email address protection from bots and scrapers
+- **Security Diagnostics**: Real-time security status overview with visual indicators
+- **Security Recommendations**: Intelligent recommendations based on current security configuration
+- **Smart Tab Visibility**: Security tab only appears when Cloudflare credentials are configured
+
+### Enhanced
+- Complete Cloudflare API integration for all security settings with proper error handling
+- AJAX-powered security settings updates without page reload
+- Professional security-focused UI with status badges and recommendations
+- Comprehensive nonce verification and capability checks for all security operations
+- Real-time security status display with color-coded indicators
+- Detailed security diagnostics with actionable recommendations
+
+### Technical
+- Added comprehensive CloudflareAPI security methods (get/update for all settings)
+- Enhanced main Cloudflare class with security wrapper methods
+- New AJAX handler for security settings with proper validation
+- Security tab view with modern card-based layout and responsive design
+- Integrated security status tracking and recommendation engine
+
 ## [1.3.5] - 2025-01-24
 
 ### Fixed
