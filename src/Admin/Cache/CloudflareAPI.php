@@ -354,7 +354,341 @@ class CloudflareAPI {
             error_log('Holler Cache Control - Update development mode error: ' . $e->getMessage());
             return array(
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Failed to update development mode: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get security settings from Cloudflare
+     */
+    public function get_security_settings() {
+        try {
+            $settings = array();
+            
+            // Get security level
+            $security_level = $this->get_security_level();
+            $settings['security_level'] = $security_level['value'] ?? 'unknown';
+            
+            // Get bot fight mode
+            $bot_fight = $this->get_bot_fight_mode();
+            $settings['bot_fight_mode'] = $bot_fight['value'] ?? 'unknown';
+            
+            // Get browser integrity check
+            $browser_check = $this->get_browser_integrity_check();
+            $settings['browser_check'] = $browser_check['value'] ?? 'unknown';
+            
+            // Get email obfuscation
+            $email_obfuscation = $this->get_email_obfuscation();
+            $settings['email_obfuscation'] = $email_obfuscation['value'] ?? 'unknown';
+            
+            return array(
+                'success' => true,
+                'settings' => $settings
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Get security settings error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => 'Failed to get security settings: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get security level
+     */
+    public function get_security_level() {
+        try {
+            $response = wp_remote_get($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/security_level', array(
+                'headers' => $this->get_headers()
+            ));
+
+            if (is_wp_error($response)) {
+                return array('value' => 'unknown');
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                return array('value' => 'unknown');
+            }
+
+            return array('value' => $body['result']['value']);
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Get security level error: ' . $e->getMessage());
+            return array('value' => 'unknown');
+        }
+    }
+
+    /**
+     * Update security level
+     */
+    public function update_security_level($level) {
+        try {
+            $valid_levels = array('essentially_off', 'low', 'medium', 'high', 'under_attack');
+            if (!in_array($level, $valid_levels)) {
+                return array(
+                    'success' => false,
+                    'message' => 'Invalid security level'
+                );
+            }
+
+            $response = wp_remote_request($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/security_level', array(
+                'method' => 'PATCH',
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'value' => $level
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => 'Failed to connect to Cloudflare API'
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                $error_message = 'Unknown error';
+                if (isset($body['errors']) && is_array($body['errors']) && !empty($body['errors'])) {
+                    $error_message = $body['errors'][0]['message'];
+                }
+                return array(
+                    'success' => false,
+                    'message' => $error_message
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => 'Security level updated successfully',
+                'value' => $body['result']['value']
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Update security level error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => 'Failed to update security level: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get bot fight mode status
+     */
+    public function get_bot_fight_mode() {
+        try {
+            $response = wp_remote_get($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/bot_fight_mode', array(
+                'headers' => $this->get_headers()
+            ));
+
+            if (is_wp_error($response)) {
+                return array('value' => 'unknown');
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                return array('value' => 'unknown');
+            }
+
+            return array('value' => $body['result']['value']);
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Get bot fight mode error: ' . $e->getMessage());
+            return array('value' => 'unknown');
+        }
+    }
+
+    /**
+     * Update bot fight mode
+     */
+    public function update_bot_fight_mode($enabled) {
+        try {
+            $value = $enabled ? 'on' : 'off';
+
+            $response = wp_remote_request($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/bot_fight_mode', array(
+                'method' => 'PATCH',
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'value' => $value
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => 'Failed to connect to Cloudflare API'
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                $error_message = 'Unknown error';
+                if (isset($body['errors']) && is_array($body['errors']) && !empty($body['errors'])) {
+                    $error_message = $body['errors'][0]['message'];
+                }
+                return array(
+                    'success' => false,
+                    'message' => $error_message
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => 'Bot fight mode updated successfully',
+                'value' => $body['result']['value']
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Update bot fight mode error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => 'Failed to update bot fight mode: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get browser integrity check status
+     */
+    public function get_browser_integrity_check() {
+        try {
+            $response = wp_remote_get($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/browser_check', array(
+                'headers' => $this->get_headers()
+            ));
+
+            if (is_wp_error($response)) {
+                return array('value' => 'unknown');
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                return array('value' => 'unknown');
+            }
+
+            return array('value' => $body['result']['value']);
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Get browser integrity check error: ' . $e->getMessage());
+            return array('value' => 'unknown');
+        }
+    }
+
+    /**
+     * Update browser integrity check
+     */
+    public function update_browser_integrity_check($enabled) {
+        try {
+            $value = $enabled ? 'on' : 'off';
+
+            $response = wp_remote_request($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/browser_check', array(
+                'method' => 'PATCH',
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'value' => $value
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => 'Failed to connect to Cloudflare API'
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                $error_message = 'Unknown error';
+                if (isset($body['errors']) && is_array($body['errors']) && !empty($body['errors'])) {
+                    $error_message = $body['errors'][0]['message'];
+                }
+                return array(
+                    'success' => false,
+                    'message' => $error_message
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => 'Browser integrity check updated successfully',
+                'value' => $body['result']['value']
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Update browser integrity check error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => 'Failed to update browser integrity check: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get email obfuscation status
+     */
+    public function get_email_obfuscation() {
+        try {
+            $response = wp_remote_get($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/email_obfuscation', array(
+                'headers' => $this->get_headers()
+            ));
+
+            if (is_wp_error($response)) {
+                return array('value' => 'unknown');
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                return array('value' => 'unknown');
+            }
+
+            return array('value' => $body['result']['value']);
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Get email obfuscation error: ' . $e->getMessage());
+            return array('value' => 'unknown');
+        }
+    }
+
+    /**
+     * Update email obfuscation
+     */
+    public function update_email_obfuscation($enabled) {
+        try {
+            $value = $enabled ? 'on' : 'off';
+
+            $response = wp_remote_request($this->api_endpoint . '/zones/' . $this->zone_id . '/settings/email_obfuscation', array(
+                'method' => 'PATCH',
+                'headers' => $this->get_headers(),
+                'body' => json_encode(array(
+                    'value' => $value
+                ))
+            ));
+
+            if (is_wp_error($response)) {
+                return array(
+                    'success' => false,
+                    'message' => 'Failed to connect to Cloudflare API'
+                );
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!$body || !isset($body['success']) || !$body['success']) {
+                $error_message = 'Unknown error';
+                if (isset($body['errors']) && is_array($body['errors']) && !empty($body['errors'])) {
+                    $error_message = $body['errors'][0]['message'];
+                }
+                return array(
+                    'success' => false,
+                    'message' => $error_message
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => 'Email obfuscation updated successfully',
+                'value' => $body['result']['value']
+            );
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Update email obfuscation error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => 'Failed to update email obfuscation: ' . $e->getMessage()
             );
         }
     }

@@ -322,6 +322,7 @@ class Tools {
         add_action('wp_ajax_holler_export_diagnostics', array($this, 'handle_export_diagnostics_ajax'));
         add_action('wp_ajax_holler_cache_status', array($this, 'handle_cache_status_ajax'));
         add_action('wp_ajax_holler_toggle_cloudflare_dev_mode', array($this, 'handle_toggle_cloudflare_dev_mode_ajax'));
+        add_action('wp_ajax_holler_update_security_setting', array($this, 'handle_update_security_setting_ajax'));
     }
 
     /**
@@ -2094,6 +2095,47 @@ class Tools {
                 'message' => $result['message'],
                 'new_status' => $value,
                 'action_performed' => $action
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => $result['message']
+            ));
+        }
+    }
+
+    /**
+     * Handle AJAX request to update Cloudflare security setting
+     */
+    public function handle_update_security_setting_ajax() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control_security')) {
+            wp_die('Security check failed');
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        $setting = sanitize_text_field($_POST['setting']);
+        $value = sanitize_text_field($_POST['value']);
+        
+        // Validate setting name
+        $valid_settings = array('security_level', 'bot_fight_mode', 'browser_check', 'email_obfuscation');
+        if (!in_array($setting, $valid_settings)) {
+            wp_send_json_error(array(
+                'message' => 'Invalid security setting'
+            ));
+        }
+        
+        // Update security setting
+        $result = \Holler\CacheControl\Admin\Cache\Cloudflare::update_security_setting($setting, $value);
+
+        if ($result['success']) {
+            wp_send_json_success(array(
+                'message' => $result['message'],
+                'setting' => $setting,
+                'new_value' => $value
             ));
         } else {
             wp_send_json_error(array(

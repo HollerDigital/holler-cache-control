@@ -497,4 +497,84 @@ class Cloudflare {
             return false;
         }
     }
+
+    /**
+     * Get security settings from Cloudflare
+     *
+     * @return array Security settings
+     */
+    public static function get_security_settings() {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return array(
+                    'success' => false,
+                    'message' => 'Cloudflare credentials not configured'
+                );
+            }
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            return $api->get_security_settings();
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to get security settings: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Update security setting
+     *
+     * @param string $setting Security setting name
+     * @param mixed $value Setting value
+     * @return array Result of update operation
+     */
+    public static function update_security_setting($setting, $value) {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return array(
+                    'success' => false,
+                    'message' => 'Cloudflare credentials not configured'
+                );
+            }
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            switch ($setting) {
+                case 'security_level':
+                    return $api->update_security_level($value);
+                case 'bot_fight_mode':
+                    return $api->update_bot_fight_mode($value === 'on');
+                case 'browser_check':
+                    return $api->update_browser_integrity_check($value === 'on');
+                case 'email_obfuscation':
+                    return $api->update_email_obfuscation($value === 'on');
+                default:
+                    return array(
+                        'success' => false,
+                        'message' => 'Invalid security setting'
+                    );
+            }
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Failed to update security setting: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
 }

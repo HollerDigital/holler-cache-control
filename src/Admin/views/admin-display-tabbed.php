@@ -68,6 +68,14 @@ $tabs = array(
     )
 );
 
+// Add Security tab only if Cloudflare is configured
+if ($cloudflare_status['status'] === 'active') {
+    $tabs['security'] = array(
+        'title' => __('Security', 'holler-cache-control'),
+        'icon' => 'dashicons-shield'
+    );
+}
+
 ?>
 
 <div class="wrap holler-cache-control-admin">
@@ -96,6 +104,9 @@ $tabs = array(
                 break;
             case 'cloudflare':
                 include_once 'tabs/cloudflare.php';
+                break;
+            case 'security':
+                include_once 'tabs/security.php';
                 break;
             case 'diagnostics':
                 include_once 'tabs/diagnostics.php';
