@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2025-01-24
+
+### Added
+- **Plugin Details Modal**: Full "View details | Check for updates" functionality now available in WordPress plugins page
+- **Comprehensive readme.txt**: Complete plugin documentation with features, installation, FAQ, and changelog
+- **Enhanced Plugin Metadata**: Added GitHub Plugin URI, Update URI, and WordPress compatibility information
+- **Plugin Details Sections**: Description, installation, FAQ, and changelog sections for plugin details modal
+- **WordPress.org Style Integration**: Plugin now displays with proper icons, banners, and metadata
+
+### Enhanced
+- Plugin header now includes all necessary metadata for WordPress plugin update system
+- PluginUpdater class provides comprehensive plugin information for details modal
+- Improved plugin discovery and update experience matching WordPress.org plugins
+- Better integration with WordPress plugin management interface
+
 ## [1.3.3] - 2025-01-24
 
 ### Added
