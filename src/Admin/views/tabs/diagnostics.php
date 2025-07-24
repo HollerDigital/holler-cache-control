@@ -19,6 +19,11 @@ use Holler\CacheControl\Admin\Diagnostics\PluginDiagnostics;
 $plugin_recommendations = PluginDiagnostics::get_plugin_recommendations();
 $optimization_score = PluginDiagnostics::get_optimization_score($plugin_recommendations);
 $priority_recommendations = PluginDiagnostics::get_priority_recommendations($plugin_recommendations);
+
+// Get conflicting cache plugins
+$tools = new \Holler\CacheControl\Admin\Tools('holler-cache-control', HOLLER_CACHE_CONTROL_VERSION);
+$conflicting_plugins = $tools->detect_conflicting_cache_plugins();
+$conflict_warnings = $tools->get_cache_plugin_conflict_warnings();
 ?>
 
 <div class="cache-status-card full-width">
@@ -52,6 +57,176 @@ $priority_recommendations = PluginDiagnostics::get_priority_recommendations($plu
         </div>
     </div>
 </div>
+
+<!-- Cache Plugin Conflicts -->
+<?php if (!empty($conflicting_plugins)): ?>
+<div class="cache-status-card full-width">
+    <div class="cache-status-header">
+        <h3><?php _e('Cache Plugin Conflicts', 'holler-cache-control'); ?></h3>
+        <div class="conflict-summary">
+            <span class="conflict-count <?php echo !empty($conflict_warnings) ? 'has-conflicts' : 'no-conflicts'; ?>">
+                <?php 
+                // Exclude informational plugins from conflict count
+                $high_conflicts = array_filter($conflicting_plugins, function($plugin) { 
+                    return $plugin['conflict_level'] === 'high' && !isset($plugin['is_informational']); 
+                });
+                $medium_conflicts = array_filter($conflicting_plugins, function($plugin) { 
+                    return $plugin['conflict_level'] === 'medium' && !isset($plugin['is_informational']); 
+                });
+                $conflict_count = count($high_conflicts) + count($medium_conflicts);
+                
+                $info_plugins = array_filter($conflicting_plugins, function($plugin) { 
+                    return isset($plugin['is_informational']) && $plugin['is_informational']; 
+                });
+                $info_count = count($info_plugins);
+                
+                if ($conflict_count > 0) {
+                    printf(_n('%d Conflict Detected', '%d Conflicts Detected', $conflict_count, 'holler-cache-control'), $conflict_count);
+                    if ($info_count > 0) {
+                        printf(' | %d ' . _n('Info Plugin', 'Info Plugins', $info_count, 'holler-cache-control'), $info_count);
+                    }
+                } else {
+                    if ($info_count > 0) {
+                        printf('%d ' . _n('Info Plugin', 'Info Plugins', $info_count, 'holler-cache-control'), $info_count);
+                    } else {
+                        _e('No Conflicts', 'holler-cache-control');
+                    }
+                }
+                ?>
+            </span>
+        </div>
+    </div>
+    <div class="cache-status-content">
+        <p><?php _e('Detection and analysis of other cache plugins that may conflict with Holler Cache Control.', 'holler-cache-control'); ?></p>
+        
+        <?php if (!empty($conflict_warnings)): ?>
+            <div class="conflict-warnings" style="margin: 16px 0;">
+                <?php foreach ($conflict_warnings as $warning): ?>
+                    <div class="holler-notice notice-<?php echo esc_attr($warning['type']); ?>" style="margin-bottom: 12px;">
+                        <p><?php echo wp_kses_post($warning['message']); ?></p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+        
+        <div class="plugin-conflicts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 16px;">
+            <?php foreach ($conflicting_plugins as $plugin_key => $plugin_info): ?>
+                <div class="conflict-plugin-card" style="border: 1px solid #ddd; border-radius: 4px; padding: 16px; background: #fff;">
+                    <div class="plugin-conflict-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="margin: 0; font-size: 14px;"><?php echo esc_html($plugin_info['name']); ?></h4>
+                        <span class="conflict-level conflict-<?php echo esc_attr($plugin_info['conflict_level']); ?>" style="padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                            <?php 
+                            switch($plugin_info['conflict_level']) {
+                                case 'high':
+                                    echo '⚠️ ' . __('High Risk', 'holler-cache-control');
+                                    break;
+                                case 'medium':
+                                    echo '⚡ ' . __('Medium Risk', 'holler-cache-control');
+                                    break;
+                                case 'low':
+                                    echo '✅ ' . __('Low Risk', 'holler-cache-control');
+                                    break;
+                                case 'info':
+                                    echo 'ℹ️ ' . __('Informational', 'holler-cache-control');
+                                    break;
+                            }
+                            ?>
+                        </span>
+                    </div>
+                    
+                    <div class="plugin-conflict-details">
+                        <p style="margin: 0 0 8px 0; font-size: 13px; color: #666;">
+                            <strong><?php _e('Description:', 'holler-cache-control'); ?></strong> <?php echo esc_html($plugin_info['description']); ?>
+                        </p>
+                        
+                        <?php if (isset($plugin_info['purging_enabled'])): ?>
+                            <p style="margin: 0 0 8px 0; font-size: 13px;">
+                                <strong><?php _e('Auto-Purge:', 'holler-cache-control'); ?></strong> 
+                                <span class="<?php echo $plugin_info['purging_enabled'] ? 'enabled' : 'disabled'; ?>">
+                                    <?php echo $plugin_info['purging_enabled'] ? __('Enabled', 'holler-cache-control') : __('Disabled', 'holler-cache-control'); ?>
+                                </span>
+                            </p>
+                        <?php endif; ?>
+                        
+                        <?php if (isset($plugin_info['purge_settings']) && $plugin_key === 'nginx_helper'): ?>
+                            <div style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 3px;">
+                                <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #495057;">
+                                    <?php printf(__('Purge Triggers (%d of %d enabled):', 'holler-cache-control'), $plugin_info['enabled_purge_count'], $plugin_info['total_purge_settings']); ?>
+                                </p>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px; font-size: 11px;">
+                                    <?php foreach ($plugin_info['purge_settings'] as $setting_key => $is_enabled): ?>
+                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                            <span style="color: <?php echo $is_enabled ? '#28a745' : '#6c757d'; ?>; font-weight: bold;">
+                                                <?php echo $is_enabled ? '✓' : '✗'; ?>
+                                            </span>
+                                            <span style="color: <?php echo $is_enabled ? '#28a745' : '#6c757d'; ?>; font-family: monospace;">
+                                                <?php echo esc_html(str_replace('_', ' ', ucfirst($setting_key))); ?>
+                                            </span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <?php if (isset($plugin_info['redis_status']) && $plugin_key === 'redis_cache'): ?>
+                            <div style="margin: 8px 0; padding: 8px; background: #e8f4fd; border-radius: 3px; border-left: 3px solid #0073aa;">
+                                <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #0073aa;">
+                                    <?php _e('Redis Connection Status:', 'holler-cache-control'); ?>
+                                </p>
+                                <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+                                    <span style="color: <?php echo $plugin_info['redis_status'] === 'connected' ? '#28a745' : ($plugin_info['redis_status'] === 'error' ? '#dc3545' : '#ffc107'); ?>; font-weight: bold;">
+                                        <?php 
+                                        switch($plugin_info['redis_status']) {
+                                            case 'connected':
+                                                echo '✓ Connected';
+                                                break;
+                                            case 'disconnected':
+                                                echo '✗ Disconnected';
+                                                break;
+                                            case 'error':
+                                                echo '⚠ Error';
+                                                break;
+                                            default:
+                                                echo '❓ Unknown';
+                                        }
+                                        ?>
+                                    </span>
+                                    <span style="color: #495057; font-style: italic;">
+                                        <?php echo esc_html($plugin_info['redis_info']); ?>
+                                    </span>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <div class="plugin-recommendation" style="margin-top: 12px; padding: 8px; background: #f9f9f9; border-left: 3px solid #0073aa; font-size: 12px;">
+                            <strong><?php _e('Recommendation:', 'holler-cache-control'); ?></strong><br>
+                            <?php echo esc_html($plugin_info['recommendation']); ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        
+        <?php if (empty($conflicting_plugins)): ?>
+            <div class="no-conflicts" style="text-align: center; padding: 32px; background: #f0f8f0; border: 1px solid #d4edda; border-radius: 4px; margin-top: 16px;">
+                <span style="font-size: 48px;">✅</span>
+                <h4 style="color: #155724; margin: 8px 0;"><?php _e('No Cache Plugin Conflicts Detected', 'holler-cache-control'); ?></h4>
+                <p style="color: #155724; margin: 0;"><?php _e('Your site is not using any conflicting cache plugins. Holler Cache Control can operate without interference.', 'holler-cache-control'); ?></p>
+            </div>
+        <?php endif; ?>
+        
+        <div class="conflict-documentation" style="margin-top: 24px; padding: 16px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+            <h4 style="margin: 0 0 12px 0; color: #856404;"><?php _e('Best Practices for Cache Management', 'holler-cache-control'); ?></h4>
+            <ul style="margin: 0; padding-left: 20px; color: #856404;">
+                <li><?php _e('For optimal performance, use only one cache management plugin at a time', 'holler-cache-control'); ?></li>
+                <li><?php _e('If using Holler Cache Control exclusively, disable auto-purge features in other cache plugins', 'holler-cache-control'); ?></li>
+                <li><?php _e('Monitor your site performance after making cache plugin changes', 'holler-cache-control'); ?></li>
+                <li><?php _e('Consider deactivating conflicting plugins if they are not essential for your setup', 'holler-cache-control'); ?></li>
+            </ul>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Plugin Performance Recommendations -->
 <div class="cache-status-card full-width">
@@ -584,3 +759,129 @@ jQuery(document).ready(function($) {
     });
 });
 </script>
+
+<style>
+/* Cache Plugin Conflict Styles */
+.conflict-summary .conflict-count {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.conflict-count.has-conflicts {
+    background: #dc3545;
+    color: white;
+}
+
+.conflict-count.no-conflicts {
+    background: #28a745;
+    color: white;
+}
+
+.conflict-level {
+    display: inline-block;
+}
+
+.conflict-level.conflict-high {
+    background: #dc3545;
+    color: white;
+}
+
+.conflict-level.conflict-medium {
+    background: #ffc107;
+    color: #212529;
+}
+
+.conflict-level.conflict-low {
+    background: #28a745;
+    color: white;
+}
+
+.conflict-level.conflict-info {
+    background: #17a2b8;
+    color: white;
+}
+
+.plugin-conflict-details .enabled {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.plugin-conflict-details .disabled {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.conflict-plugin-card {
+    transition: box-shadow 0.2s ease;
+}
+
+.conflict-plugin-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.plugin-recommendation {
+    position: relative;
+}
+
+.plugin-recommendation::before {
+    content: "💡";
+    position: absolute;
+    left: -20px;
+    top: 8px;
+}
+
+.conflict-warnings .holler-notice {
+    border-left-width: 4px;
+    border-left-style: solid;
+    padding: 12px;
+    margin: 8px 0;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.conflict-warnings .notice-error {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+}
+
+.conflict-warnings .notice-warning {
+    border-left-color: #ffc107;
+    background: #fff3cd;
+}
+
+.no-conflicts {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.conflict-documentation {
+    position: relative;
+}
+
+.conflict-documentation::before {
+    content: "📚";
+    position: absolute;
+    left: -30px;
+    top: 16px;
+    font-size: 20px;
+}
+
+@media (max-width: 768px) {
+    .plugin-conflicts-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .plugin-conflict-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px;
+    }
+}
+</style>

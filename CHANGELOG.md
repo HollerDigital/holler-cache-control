@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 2025-01-24
+
+### Added
+- **Comprehensive Cache Plugin Conflict Detection**: New intelligent detection system for conflicting cache plugins
+- **Enhanced Nginx Helper Analysis**: Detailed detection of all 9 specific Nginx Helper purge triggers:
+  - `purge_homepage_on_edit`
+  - `purge_homepage_on_del`
+  - `purge_page_on_mod`
+  - `purge_page_on_new_comment`
+  - `purge_page_on_deleted_comment`
+  - `purge_archive_on_edit`
+  - `purge_archive_on_del`
+  - `purge_archive_on_new_comment`
+  - `purge_archive_on_deleted_comment`
+- **Smart Conflict Risk Assessment**: Automatic categorization of conflicts as High, Medium, Low, or Informational
+- **Redis Connection Diagnostics**: Real-time Redis server connection testing and status reporting
+- **Cache Plugin Conflicts Section**: New dedicated section in Diagnostics tab with:
+  - Visual conflict summary with color-coded status indicators
+  - Detailed plugin cards showing conflict levels and recommendations
+  - Granular Nginx Helper purge trigger analysis with ✓/✗ status display
+  - Redis connection status with detailed connection information
+  - Best practices documentation for cache management
+- **Informational Plugin Support**: Redis Object Cache treated as informational rather than conflicting
+- **Actionable Recommendations**: Specific guidance for each detected plugin with exact settings to modify
+
+### Enhanced
+- **Diagnostics Tab UI**: Comprehensive visual overhaul with professional styling and responsive design
+- **Conflict Detection Logic**: Intelligent assessment based on enabled purge triggers (6+ = High, 3-5 = Medium, 1-2 = Low)
+- **User Experience**: Clear visual indicators, hover effects, and mobile-friendly responsive layout
+- **Plugin Compatibility**: Enhanced detection for W3 Total Cache, WP Rocket, WP Super Cache, and LiteSpeed Cache
+
+### Fixed
+- **PHP Namespace Conflicts**: Resolved Redis class namespace collision with fully qualified class names
+- **Constructor Arguments**: Fixed Tools class instantiation in diagnostics with proper constructor parameters
+- **Duplicate Method Declarations**: Removed accidentally duplicated methods causing fatal PHP errors
+
+### Technical
+- **Detection Methods**: Added `detect_conflicting_cache_plugins()` and `get_cache_plugin_conflict_warnings()` methods
+- **UI Components**: New conflict plugin cards with detailed settings analysis and status indicators
+- **CSS Styling**: Comprehensive styling for conflict levels, status indicators, and responsive design
+- **Error Handling**: Robust error handling for Redis connection testing and plugin detection
+
+### Documentation
+- **Best Practices Guide**: Integrated documentation promoting single-plugin cache management approach
+- **Conflict Resolution**: Clear guidance on disabling conflicting auto-purge settings
+- **Redis Information**: Educational content about Redis Object Cache compatibility
+
+This release provides users with comprehensive visibility into cache plugin conflicts and actionable guidance for optimizing their cache management setup with Holler Cache Control as the unified solution.
+
 ## [1.3.8] - 2025-01-24
 
 ### Added

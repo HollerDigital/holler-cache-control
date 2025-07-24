@@ -1501,91 +1501,222 @@ class Tools {
     }
 
     /**
-     * Smart detection to determine if we should skip auto-purge during editing sessions
-     * Prevents AJAX timeouts and conflicts with page builders like Elementor
+     * Detect conflicting cache plugins that might interfere with Holler Cache Control
      * 
-     * @return bool True if auto-purge should be skipped, false otherwise
+     * @return array Array of detected conflicting plugins with details
      */
-    private function should_skip_auto_purge() {
-        // Skip if we're in an AJAX request from page builders
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            // Check for Elementor editing
-            if (isset($_POST['action']) && (
-                strpos($_POST['action'], 'elementor') !== false ||
-                strpos($_POST['action'], 'elementor_ajax') !== false ||
-                $_POST['action'] === 'elementor_save_builder_content' ||
-                $_POST['action'] === 'elementor_render_widget'
-            )) {
-                return true;
+    public function detect_conflicting_cache_plugins() {
+        if (!function_exists('is_plugin_active')) {
+            include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+        }
+
+        $conflicting_plugins = array();
+
+        // Nginx Helper Plugin
+        if (is_plugin_active('nginx-helper/nginx-helper.php') || 
+            is_plugin_active('nginx-cache/nginx-cache.php') ||
+            class_exists('Nginx_Helper') ||
+            defined('RT_WP_NGINX_HELPER_VERSION')) {
+            
+            $nginx_settings = get_option('rt_wp_nginx_helper_options', array());
+            $is_purging_enabled = !empty($nginx_settings['enable_purge']);
+            
+            // Check specific purge settings
+            $purge_settings = array(
+                'purge_homepage_on_edit' => !empty($nginx_settings['purge_homepage_on_edit']),
+                'purge_homepage_on_del' => !empty($nginx_settings['purge_homepage_on_del']),
+                'purge_page_on_mod' => !empty($nginx_settings['purge_page_on_mod']),
+                'purge_page_on_new_comment' => !empty($nginx_settings['purge_page_on_new_comment']),
+                'purge_page_on_deleted_comment' => !empty($nginx_settings['purge_page_on_deleted_comment']),
+                'purge_archive_on_edit' => !empty($nginx_settings['purge_archive_on_edit']),
+                'purge_archive_on_del' => !empty($nginx_settings['purge_archive_on_del']),
+                'purge_archive_on_new_comment' => !empty($nginx_settings['purge_archive_on_new_comment']),
+                'purge_archive_on_deleted_comment' => !empty($nginx_settings['purge_archive_on_deleted_comment'])
+            );
+            
+            $enabled_purge_count = count(array_filter($purge_settings));
+            $total_purge_settings = count($purge_settings);
+            
+            // Determine conflict level based on enabled settings
+            $conflict_level = 'low';
+            if ($is_purging_enabled && $enabled_purge_count > 0) {
+                if ($enabled_purge_count >= 6) {
+                    $conflict_level = 'high';
+                } elseif ($enabled_purge_count >= 3) {
+                    $conflict_level = 'medium';
+                } else {
+                    $conflict_level = 'low';
+                }
             }
-
-            // Check for WordPress block editor (Gutenberg) auto-saves
-            if (isset($_POST['action']) && (
-                $_POST['action'] === 'heartbeat' ||
-                $_POST['action'] === 'autosave' ||
-                strpos($_POST['action'], 'gutenberg') !== false
-            )) {
-                return true;
+            
+            // Generate detailed recommendation
+            $recommendation = 'Plugin is active but purging is disabled - no immediate conflict';
+            if ($is_purging_enabled) {
+                if ($enabled_purge_count === 0) {
+                    $recommendation = 'Nginx Helper purging is enabled but no specific purge triggers are active';
+                } else {
+                    $recommendation = sprintf(
+                        'Nginx Helper has %d of %d purge triggers enabled. Consider disabling these to prevent duplicate cache clearing with Holler Cache Control: %s',
+                        $enabled_purge_count,
+                        $total_purge_settings,
+                        implode(', ', array_keys(array_filter($purge_settings)))
+                    );
+                }
             }
+            
+            $conflicting_plugins['nginx_helper'] = array(
+                'name' => 'Nginx Helper',
+                'status' => 'active',
+                'purging_enabled' => $is_purging_enabled,
+                'conflict_level' => $conflict_level,
+                'description' => 'Handles Nginx FastCGI cache purging',
+                'recommendation' => $recommendation,
+                'purge_settings' => $purge_settings,
+                'enabled_purge_count' => $enabled_purge_count,
+                'total_purge_settings' => $total_purge_settings
+            );
+        }
 
-            // Check for other common page builders
-            if (isset($_POST['action']) && (
-                strpos($_POST['action'], 'divi') !== false ||
-                strpos($_POST['action'], 'beaver') !== false ||
-                strpos($_POST['action'], 'vc_') !== false || // Visual Composer
-                strpos($_POST['action'], 'fusion') !== false // Avada Fusion Builder
-            )) {
-                return true;
+        // Redis Object Cache Plugin (Informational)
+        if (is_plugin_active('redis-cache/redis-cache.php') ||
+            is_plugin_active('wp-redis/wp-redis.php') ||
+            class_exists('RedisObjectCache') ||
+            defined('WP_REDIS_VERSION')) {
+            
+            // Check Redis connection status if possible
+            $redis_status = 'unknown';
+            $redis_info = '';
+            
+            if (class_exists('\Redis')) {
+                try {
+                    $redis = new \Redis();
+                    if ($redis->connect('127.0.0.1', 6379) || $redis->connect('/var/run/redis/redis-server.sock')) {
+                        $redis_status = 'connected';
+                        $redis_info = 'Redis server is accessible and functioning';
+                        $redis->close();
+                    } else {
+                        $redis_status = 'disconnected';
+                        $redis_info = 'Redis server connection failed';
+                    }
+                } catch (\Exception $e) {
+                    $redis_status = 'error';
+                    $redis_info = 'Redis connection error: ' . $e->getMessage();
+                }
             }
+            
+            $conflicting_plugins['redis_cache'] = array(
+                'name' => 'Redis Object Cache',
+                'status' => 'active',
+                'purging_enabled' => false, // Redis doesn't auto-purge like Nginx Helper
+                'conflict_level' => 'info', // Changed from 'low' to 'info'
+                'description' => 'Manages Redis object cache for improved performance',
+                'recommendation' => 'Informational only - Redis Object Cache works seamlessly with Holler Cache Control. Both plugins can safely manage different cache layers.',
+                'redis_status' => $redis_status,
+                'redis_info' => $redis_info,
+                'is_informational' => true
+            );
         }
 
-        // Skip if Elementor is actively editing (check URL parameters)
-        if (isset($_GET['elementor-preview']) || isset($_GET['elementor_library'])) {
-            return true;
+        // W3 Total Cache
+        if (is_plugin_active('w3-total-cache/w3-total-cache.php') ||
+            class_exists('W3_Plugin_TotalCache') ||
+            defined('W3TC_VERSION')) {
+            
+            $conflicting_plugins['w3_total_cache'] = array(
+                'name' => 'W3 Total Cache',
+                'status' => 'active',
+                'purging_enabled' => true,
+                'conflict_level' => 'high',
+                'description' => 'Comprehensive caching solution',
+                'recommendation' => 'Consider disabling W3TC auto-purge features or use W3TC exclusively'
+            );
         }
 
-        // Skip if we're in WordPress block editor
-        if (function_exists('get_current_screen')) {
-            $screen = get_current_screen();
-            if ($screen && $screen->is_block_editor()) {
-                return true;
-            }
+        // WP Rocket
+        if (is_plugin_active('wp-rocket/wp-rocket.php') ||
+            class_exists('WP_Rocket\\Engine\\Cache\\Purge') ||
+            defined('WP_ROCKET_VERSION')) {
+            
+            $conflicting_plugins['wp_rocket'] = array(
+                'name' => 'WP Rocket',
+                'status' => 'active',
+                'purging_enabled' => true,
+                'conflict_level' => 'high',
+                'description' => 'Premium caching and optimization plugin',
+                'recommendation' => 'Consider disabling WP Rocket auto-purge features or use WP Rocket exclusively'
+            );
         }
 
-        // Skip for post revisions and auto-drafts
-        if (isset($_POST['post_status']) && (
-            $_POST['post_status'] === 'auto-draft' ||
-            $_POST['post_status'] === 'inherit' // revisions
-        )) {
-            return true;
+        // WP Super Cache
+        if (is_plugin_active('wp-super-cache/wp-cache.php') ||
+            function_exists('wp_cache_clear_cache') ||
+            defined('WPCACHEHOME')) {
+            
+            $conflicting_plugins['wp_super_cache'] = array(
+                'name' => 'WP Super Cache',
+                'status' => 'active',
+                'purging_enabled' => true,
+                'conflict_level' => 'medium',
+                'description' => 'Simple page caching plugin',
+                'recommendation' => 'Consider disabling WP Super Cache auto-purge or use one plugin exclusively'
+            );
         }
 
-        // Skip for preview requests
-        if (isset($_POST['wp-preview']) && $_POST['wp-preview'] === 'dopreview') {
-            return true;
+        // LiteSpeed Cache
+        if (is_plugin_active('litespeed-cache/litespeed-cache.php') ||
+            class_exists('LiteSpeed\\Cache') ||
+            defined('LSCWP_VERSION')) {
+            
+            $conflicting_plugins['litespeed_cache'] = array(
+                'name' => 'LiteSpeed Cache',
+                'status' => 'active',
+                'purging_enabled' => true,
+                'conflict_level' => 'high',
+                'description' => 'LiteSpeed server-specific caching plugin',
+                'recommendation' => 'Consider using LiteSpeed Cache exclusively if on LiteSpeed server'
+            );
         }
 
-        // Skip if this is just a draft save (not a publish)
-        if (isset($_POST['save']) || isset($_POST['draft'])) {
-            return true;
-        }
-
-        return false;
+        return $conflicting_plugins;
     }
 
     /**
-     * Enhanced purge_all_caches method with smart detection
-     * Only purges if not in an editing session that could cause timeouts
+     * Get conflict warnings for admin notices
+     * 
+     * @return array Array of warning messages for conflicting plugins
      */
-    public function purge_all_caches_with_detection() {
-        // Skip auto-purge during editing sessions to prevent AJAX timeouts
-        if ($this->should_skip_auto_purge()) {
-            error_log('Holler Cache Control: Skipping auto-purge during editing session to prevent AJAX timeout');
-            return;
+    public function get_cache_plugin_conflict_warnings() {
+        $conflicting_plugins = $this->detect_conflicting_cache_plugins();
+        $warnings = array();
+
+        foreach ($conflicting_plugins as $plugin_key => $plugin_info) {
+            // Skip informational plugins from warnings
+            if (isset($plugin_info['is_informational']) && $plugin_info['is_informational']) {
+                continue;
+            }
+            
+            if ($plugin_info['conflict_level'] === 'high') {
+                $warnings[] = array(
+                    'type' => 'error',
+                    'message' => sprintf(
+                        '<strong>Cache Plugin Conflict:</strong> %s is active and may conflict with Holler Cache Control. %s',
+                        $plugin_info['name'],
+                        $plugin_info['recommendation']
+                    )
+                );
+            } elseif ($plugin_info['conflict_level'] === 'medium') {
+                $warnings[] = array(
+                    'type' => 'warning',
+                    'message' => sprintf(
+                        '<strong>Cache Plugin Notice:</strong> %s is active. %s',
+                        $plugin_info['name'],
+                        $plugin_info['recommendation']
+                    )
+                );
+            }
         }
 
-        // Proceed with normal cache purging
-        $this->purge_all_caches();
+        return $warnings;
     }
 
     /**
