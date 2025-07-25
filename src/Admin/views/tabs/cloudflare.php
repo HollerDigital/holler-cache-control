@@ -18,6 +18,12 @@ $credentials = array(
     'zone_id' => defined('CLOUDFLARE_ZONE_ID')
 );
 
+// Check if credentials are available (either constants or options)
+$email = defined('CLOUDFLARE_EMAIL') ? CLOUDFLARE_EMAIL : get_option('cloudflare_email', '');
+$api_key = defined('CLOUDFLARE_API_KEY') ? CLOUDFLARE_API_KEY : get_option('cloudflare_api_key', '');
+$zone_id = defined('CLOUDFLARE_ZONE_ID') ? CLOUDFLARE_ZONE_ID : get_option('cloudflare_zone_id', '');
+$has_credentials = !empty($email) && !empty($api_key) && !empty($zone_id);
+
 // Get Cloudflare configuration guidance
 $config_guidance = \Holler\CacheControl\get_cloudflare_config_guidance();
 $config_status = \Holler\CacheControl\get_cloudflare_config_status();
@@ -96,7 +102,13 @@ if ($cloudflare_status['status'] === 'active') {
                     <?php foreach ($apo_info as $key => $value): ?>
                         <div>
                             <strong><?php echo esc_html(ucwords(str_replace('_', ' ', $key))); ?>:</strong><br>
-                            <?php echo esc_html($value); ?>
+                            <?php 
+                            if (is_array($value)) {
+                                echo esc_html(implode(', ', $value));
+                            } else {
+                                echo esc_html($value);
+                            }
+                            ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -276,6 +288,167 @@ define('CLOUDFLARE_ZONE_ID', 'your-zone-id');</pre>
 </div>
 <?php endif; ?>
 
+<!-- Cloudflare Settings Check & Configuration -->
+<?php if ($cloudflare_status['status'] === 'active'): ?>
+<div class="cache-status-card full-width">
+    <div class="cache-status-header">
+        <h3><?php _e('Check & Configure Settings', 'holler-cache-control'); ?></h3>
+    </div>
+    <div class="cache-status-content">
+        <p><?php _e('Verify your Cloudflare credentials and apply recommended performance settings for optimal WordPress caching.', 'holler-cache-control'); ?></p>
+        
+        <div style="margin: 16px 0;">
+            <button type="button" class="button button-primary" id="check-cloudflare-settings">
+                <span class="dashicons dashicons-admin-tools"></span>
+                <?php _e('Check & Configure Settings', 'holler-cache-control'); ?>
+            </button>
+        </div>
+        
+        <div class="holler-notice notice-info" style="margin-top: 16px;">
+            <p><strong><?php _e('What this does:', 'holler-cache-control'); ?></strong></p>
+            <ul style="margin-left: 20px;">
+                <li><?php _e('✓ Verifies your Cloudflare API credentials', 'holler-cache-control'); ?></li>
+                <li><?php _e('✓ Displays current Cloudflare zone settings', 'holler-cache-control'); ?></li>
+                <li><?php _e('✓ Applies recommended performance optimizations', 'holler-cache-control'); ?></li>
+                <li><?php _e('✓ Shows detailed before/after comparison', 'holler-cache-control'); ?></li>
+            </ul>
+            <p><em><?php _e('Recommended settings include: optimal cache TTL, auto-minification, Brotli compression, and other performance enhancements.', 'holler-cache-control'); ?></em></p>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Cloudflare Settings Controls -->
+<?php if ($has_credentials): ?>
+<div class="holler-card">
+    <h3><?php _e('🎛️ Cloudflare Settings Controls', 'holler-cache-control'); ?></h3>
+    <p><?php _e('Configure your Cloudflare zone settings directly from here. Changes are applied immediately.', 'holler-cache-control'); ?></p>
+    
+    <div class="cloudflare-controls-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+        
+        <!-- Essential Controls -->
+        <div class="control-group">
+            <h4>🚀 Essential Controls</h4>
+            
+            <!-- Development Mode -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                    <span><strong>🔧 Development Mode</strong><br><small>Bypasses cache for testing</small></span>
+                    <label class="toggle-switch" style="margin-left: 10px;">
+                        <input type="checkbox" id="dev-mode-toggle" data-setting="development_mode">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </label>
+            </div>
+            
+            <!-- Cache Level -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label><strong>📈 Cache Level</strong><br><small>How much content to cache</small></label>
+                <select id="cache-level-select" data-setting="cache_level" style="width: 100%; margin-top: 5px;">
+                    <option value="basic">Basic - Cache static content only</option>
+                    <option value="simplified">Simplified - Cache static + some dynamic</option>
+                    <option value="aggressive">Aggressive - Cache everything possible</option>
+                </select>
+            </div>
+            
+            <!-- Browser Cache TTL -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label><strong>⏱️ Browser Cache TTL</strong><br><small>How long browsers cache content</small></label>
+                <select id="browser-ttl-select" data-setting="browser_cache_ttl" style="width: 100%; margin-top: 5px;">
+                    <option value="1800">30 minutes</option>
+                    <option value="7200">2 hours</option>
+                    <option value="14400">4 hours</option>
+                    <option value="28800">8 hours</option>
+                    <option value="86400">1 day</option>
+                    <option value="604800">1 week</option>
+                    <option value="2592000">1 month</option>
+                </select>
+            </div>
+            
+            <!-- Always Online -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                    <span><strong>🌐 Always Online</strong><br><small>Serve cached version if origin is down</small></span>
+                    <label class="toggle-switch" style="margin-left: 10px;">
+                        <input type="checkbox" id="always-online-toggle" data-setting="always_online">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </label>
+            </div>
+        </div>
+        
+        <!-- Advanced Controls -->
+        <div class="control-group">
+            <h4>⚡ Advanced Controls</h4>
+            
+            <!-- Rocket Loader -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                    <span><strong>⚡ Rocket Loader</strong><br><small>Async JavaScript loading</small></span>
+                    <label class="toggle-switch" style="margin-left: 10px;">
+                        <input type="checkbox" id="rocket-loader-toggle" data-setting="rocket_loader">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </label>
+            </div>
+            
+            <!-- Auto Minify -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label><strong>🗜️ Auto Minify</strong><br><small>Compress HTML, CSS, and JS</small></label>
+                <div style="margin-top: 8px;">
+                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" id="minify-html" data-setting="auto_minify_html"> HTML</label>
+                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" id="minify-css" data-setting="auto_minify_css"> CSS</label>
+                    <label style="display: inline-block;"><input type="checkbox" id="minify-js" data-setting="auto_minify_js"> JS</label>
+                </div>
+            </div>
+            
+            <!-- Security Level -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label><strong>🛡️ Security Level</strong><br><small>Challenge level for visitors</small></label>
+                <select id="security-level-select" data-setting="security_level" style="width: 100%; margin-top: 5px;">
+                    <option value="off">Off - No challenges</option>
+                    <option value="essentially_off">Essentially Off - Very low</option>
+                    <option value="low">Low - Challenge bad IPs</option>
+                    <option value="medium">Medium - Standard protection</option>
+                    <option value="high">High - Challenge more visitors</option>
+                    <option value="under_attack">I'm Under Attack! - Maximum protection</option>
+                </select>
+            </div>
+            
+            <!-- SSL Mode -->
+            <div class="control-item" style="margin-bottom: 15px;">
+                <label><strong>🔒 SSL Mode</strong><br><small>SSL/TLS encryption level</small></label>
+                <select id="ssl-mode-select" data-setting="ssl" style="width: 100%; margin-top: 5px;">
+                    <option value="off">Off - No encryption</option>
+                    <option value="flexible">Flexible - Cloudflare to visitor only</option>
+                    <option value="full">Full - End-to-end (any cert)</option>
+                    <option value="strict">Full (Strict) - End-to-end (valid cert)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="control-actions" style="margin-top: 20px; text-align: center;">
+        <button type="button" id="load-current-settings" class="button button-secondary">
+            🔄 Load Current Settings
+        </button>
+        <button type="button" id="apply-recommended-settings" class="button button-primary" style="margin-left: 10px;">
+            ⚡ Apply Recommended Settings
+        </button>
+    </div>
+    
+    <div class="holler-notice notice-info" style="margin-top: 16px;">
+        <p><strong><?php _e('How it works:', 'holler-cache-control'); ?></strong></p>
+        <ul style="margin-left: 20px;">
+            <li><?php _e('✓ Changes are applied immediately via Cloudflare API', 'holler-cache-control'); ?></li>
+            <li><?php _e('✓ Load current settings to see your existing configuration', 'holler-cache-control'); ?></li>
+            <li><?php _e('✓ Apply recommended settings for optimal performance', 'holler-cache-control'); ?></li>
+            <li><?php _e('✓ Each control updates independently with instant feedback', 'holler-cache-control'); ?></li>
+        </ul>
+    </div>
+</div>
+<?php endif; ?>
+
 <script>
 jQuery(document).ready(function($) {
     // Handle Cloudflare connection test
@@ -311,7 +484,7 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Handle Cloudflare settings form submission
+    // Handle Cloudflare settings form submission (but NOT the check-settings form)
     $('#cloudflare-settings-form').on('submit', function(e) {
         e.preventDefault();
         var $form = $(this);
@@ -412,6 +585,252 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    // Cloudflare Settings Check Button
+    $('#check-cloudflare-settings').click(function(e) {
+        e.preventDefault();
+        
+        var $btn = $(this);
+        var originalText = $btn.text();
+        
+        // Update button state
+        $btn.prop('disabled', true).text('Checking Settings...');
+        
+        // Make AJAX request
+        $.post(ajaxurl, {
+            action: 'cloudflare_simple_check',
+            nonce: '<?php echo wp_create_nonce('cloudflare_simple'); ?>'
+        })
+        .done(function(response) {
+            console.log('Cloudflare check response:', response);
+            console.log('Response success:', response.success);
+            console.log('Response data:', response.data);
+            
+            if (response.success) {
+                showNotice('✅ ' + response.data.message, 'success');
+                
+                // Show configuration details
+                if (response.data.details && response.data.details.length > 0) {
+                    var detailsHtml = '<div style="margin-top: 10px;"><strong>Configuration Details:</strong><ul>';
+                    response.data.details.forEach(function(detail) {
+                        detailsHtml += '<li>' + detail + '</li>';
+                    });
+                    detailsHtml += '</ul></div>';
+                    
+                    showNotice(detailsHtml, 'info');
+                }
+            } else {
+                showNotice('❌ Error: ' + (response.data ? response.data.message : 'Unknown error'), 'error');
+            }
+        })
+        .fail(function(xhr, status, error) {
+            console.error('AJAX failed:', error);
+            showNotice('❌ Request failed: ' + error, 'error');
+        })
+        .always(function() {
+            // Reset button
+            $btn.prop('disabled', false).text(originalText);
+        });
+    });
+    
+    // Show notice function
+    function showNotice(message, type) {
+        var noticeClass = 'notice-' + type;
+        var $notice = $('<div class="notice ' + noticeClass + ' is-dismissible"><p>' + message + '</p></div>');
+        $('.holler-cache-control-admin h1').after($notice);
+        
+        // Auto-dismiss after 8 seconds
+        setTimeout(function() {
+            $notice.fadeOut(function() {
+                $(this).remove();
+            });
+        }, 8000);
+    }
+    
+    // Cloudflare Settings Controls
+    
+    // Load Current Settings
+    $('#load-current-settings').click(function(e) {
+        e.preventDefault();
+        
+        var $btn = $(this);
+        var originalText = $btn.text();
+        
+        $btn.prop('disabled', true).text('🔄 Loading...');
+        
+        $.post(ajaxurl, {
+            action: 'cloudflare_load_settings',
+            nonce: '<?php echo wp_create_nonce('cloudflare_settings'); ?>'
+        })
+        .done(function(response) {
+            if (response.success && response.data.settings) {
+                populateControls(response.data.settings);
+                showNotice('✅ Current settings loaded successfully!', 'success');
+            } else {
+                showNotice('❌ Failed to load settings: ' + (response.data ? response.data.message : 'Unknown error'), 'error');
+            }
+        })
+        .fail(function() {
+            showNotice('❌ Failed to load settings', 'error');
+        })
+        .always(function() {
+            $btn.prop('disabled', false).text(originalText);
+        });
+    });
+    
+    // Apply Recommended Settings
+    $('#apply-recommended-settings').click(function(e) {
+        e.preventDefault();
+        
+        var $btn = $(this);
+        var originalText = $btn.text();
+        
+        $btn.prop('disabled', true).text('⚡ Applying...');
+        
+        var recommendedSettings = {
+            development_mode: 'off',
+            cache_level: 'aggressive',
+            browser_cache_ttl: '14400', // 4 hours
+            always_online: 'on',
+            rocket_loader: 'on',
+            auto_minify_html: true,
+            auto_minify_css: true,
+            auto_minify_js: true,
+            security_level: 'medium',
+            ssl: 'strict'
+        };
+        
+        applyMultipleSettings(recommendedSettings, function(success) {
+            if (success) {
+                populateControls(recommendedSettings);
+                showNotice('⚡ Recommended settings applied successfully!', 'success');
+            }
+            $btn.prop('disabled', false).text(originalText);
+        });
+    });
+    
+    // Individual Setting Changes
+    $('[data-setting]').on('change', function() {
+        var $control = $(this);
+        var setting = $control.data('setting');
+        var value;
+        
+        if ($control.is('input[type="checkbox"]')) {
+            if (setting.startsWith('auto_minify_')) {
+                // Handle minify checkboxes specially
+                updateMinifySettings();
+                return;
+            } else {
+                value = $control.is(':checked') ? 'on' : 'off';
+            }
+        } else {
+            value = $control.val();
+        }
+        
+        updateSetting(setting, value);
+    });
+    
+    // Update individual setting
+    function updateSetting(setting, value) {
+        $.post(ajaxurl, {
+            action: 'cloudflare_update_setting',
+            setting: setting,
+            value: value,
+            nonce: '<?php echo wp_create_nonce('cloudflare_settings'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                showNotice('✅ ' + setting.replace('_', ' ').toUpperCase() + ' updated successfully!', 'success');
+            } else {
+                showNotice('❌ Failed to update ' + setting + ': ' + (response.data ? response.data.message : 'Unknown error'), 'error');
+            }
+        })
+        .fail(function() {
+            showNotice('❌ Failed to update ' + setting, 'error');
+        });
+    }
+    
+    // Update minify settings (combined)
+    function updateMinifySettings() {
+        var minifySettings = {
+            html: $('#minify-html').is(':checked'),
+            css: $('#minify-css').is(':checked'),
+            js: $('#minify-js').is(':checked')
+        };
+        
+        $.post(ajaxurl, {
+            action: 'cloudflare_update_minify',
+            settings: minifySettings,
+            nonce: '<?php echo wp_create_nonce('cloudflare_settings'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                var enabled = [];
+                if (minifySettings.html) enabled.push('HTML');
+                if (minifySettings.css) enabled.push('CSS');
+                if (minifySettings.js) enabled.push('JS');
+                
+                var message = enabled.length > 0 ? 
+                    '✅ Auto Minify updated: ' + enabled.join(', ') + ' enabled' :
+                    '✅ Auto Minify disabled';
+                    
+                showNotice(message, 'success');
+            } else {
+                showNotice('❌ Failed to update Auto Minify: ' + (response.data ? response.data.message : 'Unknown error'), 'error');
+            }
+        })
+        .fail(function() {
+            showNotice('❌ Failed to update Auto Minify', 'error');
+        });
+    }
+    
+    // Apply multiple settings
+    function applyMultipleSettings(settings, callback) {
+        var settingsArray = Object.keys(settings).map(function(key) {
+            return { setting: key, value: settings[key] };
+        });
+        
+        $.post(ajaxurl, {
+            action: 'cloudflare_update_multiple',
+            settings: settingsArray,
+            nonce: '<?php echo wp_create_nonce('cloudflare_settings'); ?>'
+        })
+        .done(function(response) {
+            callback(response.success);
+            if (!response.success) {
+                showNotice('❌ Failed to apply settings: ' + (response.data ? response.data.message : 'Unknown error'), 'error');
+            }
+        })
+        .fail(function() {
+            callback(false);
+            showNotice('❌ Failed to apply settings', 'error');
+        });
+    }
+    
+    // Populate controls with current values
+    function populateControls(settings) {
+        // Toggle switches
+        $('#dev-mode-toggle').prop('checked', settings.development_mode === 'on');
+        $('#always-online-toggle').prop('checked', settings.always_online === 'on');
+        $('#rocket-loader-toggle').prop('checked', settings.rocket_loader === 'on');
+        
+        // Dropdowns
+        $('#cache-level-select').val(settings.cache_level || 'aggressive');
+        $('#browser-ttl-select').val(settings.browser_cache_ttl || '14400');
+        $('#security-level-select').val(settings.security_level || 'medium');
+        $('#ssl-mode-select').val(settings.ssl || 'strict');
+        
+        // Minify checkboxes
+        if (settings.auto_minify) {
+            $('#minify-html').prop('checked', settings.auto_minify.html || false);
+            $('#minify-css').prop('checked', settings.auto_minify.css || false);
+            $('#minify-js').prop('checked', settings.auto_minify.js || false);
+        } else {
+            $('#minify-html').prop('checked', settings.auto_minify_html || false);
+            $('#minify-css').prop('checked', settings.auto_minify_css || false);
+            $('#minify-js').prop('checked', settings.auto_minify_js || false);
+        }
+    }
 });
 </script>
 
@@ -423,6 +842,115 @@ jQuery(document).ready(function($) {
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* Toggle Switch Styles */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #2196F3;
+}
+
+input:focus + .toggle-slider {
+    box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* Control Group Styles */
+.control-group {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.control-group h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.control-item {
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+.control-item label {
+    margin: 0;
+    font-weight: normal;
+}
+
+.control-item strong {
+    color: #333;
+    font-size: 13px;
+}
+
+.control-item small {
+    color: #666;
+    font-size: 11px;
+}
+
+.control-item select {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.control-item input[type="checkbox"] {
+    margin-right: 6px;
+}
+
+.control-actions {
+    border-top: 1px solid #e0e0e0;
+    padding-top: 15px;
+}
+
+.control-actions .button {
+    min-width: 160px;
+    height: 32px;
+    font-size: 13px;
 }
 
 #toggle-dev-mode {

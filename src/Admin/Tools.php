@@ -37,6 +37,7 @@ class Tools {
 
         // Add hooks for cache purging
         add_action('admin_init', array($this, 'register_settings'));
+        add_action('admin_init', array($this, 'handle_dashboard_form_submission'));
         add_action('admin_footer', array($this, 'add_notice_container'));
 
         // Initialize AJAX handlers
@@ -68,6 +69,15 @@ class Tools {
         
         // Register async cache purge cron hook
         add_action('holler_cache_control_async_purge', array($this, 'handle_async_cache_purge'));
+        
+        // Initialize StatusCache system
+        \Holler\CacheControl\Admin\Cache\StatusCache::register_invalidation_hooks();
+        
+        // Initialize SmartInvalidation system
+        $this->register_smart_invalidation_hooks();
+        
+        // Initialize Real-time Status Dashboard
+        \Holler\CacheControl\Admin\Dashboard\RealTimeStatusDashboard::init();
     }
 
     /**
@@ -303,6 +313,13 @@ class Tools {
      * Initialize AJAX handlers
      */
     public function init_ajax_handlers() {
+        // Prevent double registration
+        static $ajax_initialized = false;
+        if ($ajax_initialized) {
+            return;
+        }
+        $ajax_initialized = true;
+        
         if (!$this->ajax_handler) {
             $this->ajax_handler = new \Holler\CacheControl\Admin\Cache\AjaxHandler();
         }
@@ -326,6 +343,18 @@ class Tools {
         add_action('wp_ajax_holler_cache_status', array($this, 'handle_cache_status_ajax'));
         add_action('wp_ajax_holler_toggle_cloudflare_dev_mode', array($this, 'handle_toggle_cloudflare_dev_mode_ajax'));
         add_action('wp_ajax_holler_update_security_setting', array($this, 'handle_update_security_setting_ajax'));
+        add_action('wp_ajax_holler_check_cloudflare_settings', array($this, 'handle_check_cloudflare_settings_ajax'));
+        add_action('wp_ajax_holler_cloudflare_check_settings', array($this, 'handle_cloudflare_check_settings_ajax'));
+        
+        // Test AJAX handler
+        add_action('wp_ajax_test_cloudflare', array($this, 'test_ajax_handler'));
+        
+        // Simple Cloudflare Settings Check Handler
+        add_action('wp_ajax_cloudflare_settings_check', array($this, 'handle_simple_cloudflare_check'));
+        
+        // Debug: Log AJAX handler registration
+        error_log('Holler Cache Control: Registered AJAX handlers');
+        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Registered AJAX handlers' . "\n", FILE_APPEND);
     }
 
     /**
@@ -894,6 +923,550 @@ class Tools {
     }
 
     /**
+     * Handle dashboard form submissions
+     */
+    public function handle_dashboard_form_submission() {
+    // Simple debug to track if this method is called
+    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - handle_dashboard_form_submission() called' . "\n", FILE_APPEND);
+    
+    // Debug: Log all form submissions
+    if (!empty($_POST)) {
+        error_log('Holler Cache Control: Form submission detected - POST data: ' . print_r($_POST, true));
+        // Also write to a temporary file for easier debugging
+        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Form submission: ' . print_r($_POST, true) . "\n", FILE_APPEND);
+        
+        // Check specifically for our cache_action
+        if (isset($_POST['cache_action'])) {
+            file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Found cache_action: ' . $_POST['cache_action'] . "\n", FILE_APPEND);
+        }
+    }
+        
+        // Check if this is a dashboard form submission
+        if (!isset($_POST['cache_action']) || !isset($_POST['holler_nonce'])) {
+            if (!empty($_POST)) {
+                error_log('Holler Cache Control: Form submission missing cache_action or holler_nonce');
+            }
+            return;
+        }
+        
+        error_log('Holler Cache Control: Dashboard form submission detected with action: ' . $_POST['cache_action']);
+
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['holler_nonce'], 'holler_cache_action')) {
+            wp_die(__('Security check failed. Please try again.', 'holler-cache-control'));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have sufficient permissions to perform this action.', 'holler-cache-control'));
+        }
+
+        $cache_action = sanitize_text_field($_POST['cache_action']);
+    
+    // Detect which tab the form was submitted from
+    $current_tab = 'dashboard'; // default
+    if (isset($_POST['_wp_http_referer'])) {
+        $referer = $_POST['_wp_http_referer'];
+        if (strpos($referer, 'tab=cloudflare') !== false) {
+            $current_tab = 'cloudflare';
+        } elseif (strpos($referer, 'tab=settings') !== false) {
+            $current_tab = 'settings';
+        } elseif (strpos($referer, 'tab=diagnostics') !== false) {
+            $current_tab = 'diagnostics';
+        } elseif (strpos($referer, 'tab=security') !== false) {
+            $current_tab = 'security';
+        }
+    }
+    
+    $redirect_url = admin_url('options-general.php?page=settings_page_holler-cache-control&tab=' . $current_tab);
+    
+    // Debug: Log the cache action being processed
+    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Processing cache_action: ' . $cache_action . ' on tab: ' . $current_tab . "\n", FILE_APPEND);
+
+        switch ($cache_action) {
+            case 'purge_all':
+                $this->purge_all_caches('dashboard');
+                $redirect_url = add_query_arg('cache_cleared', 'all', $redirect_url);
+                break;
+
+            case 'purge_nginx':
+                $nginx = new \Holler\CacheControl\Admin\Cache\Nginx();
+                $result = $nginx->purge_cache();
+                $status = $result['success'] ? 'success' : 'error';
+                $redirect_url = add_query_arg(array('cache_cleared' => 'nginx', 'status' => $status), $redirect_url);
+                break;
+
+            case 'purge_redis':
+                $redis = new \Holler\CacheControl\Admin\Cache\Redis();
+                $result = $redis->purge_cache();
+                $status = $result['success'] ? 'success' : 'error';
+                $redirect_url = add_query_arg(array('cache_cleared' => 'redis', 'status' => $status), $redirect_url);
+                break;
+
+            case 'purge_cloudflare':
+                $cloudflare = new \Holler\CacheControl\Admin\Cache\Cloudflare();
+                $result = $cloudflare->purge_cache();
+                $status = $result['success'] ? 'success' : 'error';
+                $redirect_url = add_query_arg(array('cache_cleared' => 'cloudflare', 'status' => $status), $redirect_url);
+                break;
+
+            case 'check_cloudflare_settings':
+                $this->handle_check_cloudflare_settings();
+                $redirect_url = add_query_arg('cloudflare_checked', '1', $redirect_url);
+                break;
+
+            case 'purge_cloudflare_apo':
+                $apo = new \Holler\CacheControl\Admin\Cache\CloudflareAPO();
+                $result = $apo->purge_cache();
+                $status = $result['success'] ? 'success' : 'error';
+                $redirect_url = add_query_arg(array('cache_cleared' => 'cloudflare_apo', 'status' => $status), $redirect_url);
+                break;
+
+            case 'fix_permissions':
+                $this->handle_fix_permissions();
+                $redirect_url = add_query_arg('permissions_fixed', '1', $redirect_url);
+                break;
+
+            default:
+                // Unknown action, redirect without message
+                break;
+        }
+
+        // Redirect to prevent form resubmission
+        wp_redirect($redirect_url);
+        exit;
+    }
+
+    /**
+     * Handle GridPane permissions fix
+     */
+    private function handle_fix_permissions() {
+        $site_url = home_url();
+        $domain = parse_url($site_url, PHP_URL_HOST);
+        
+        // Log the action
+        error_log('Holler Cache Control: Running GridPane permissions fix for: ' . $domain);
+        
+        // Execute the GridPane CLI command
+        $command = sprintf('gp fix perms %s', escapeshellarg($domain));
+        
+        // Try to execute the command
+        $output = array();
+        $return_var = 0;
+        
+        // Execute command and capture output
+        exec($command . ' 2>&1', $output, $return_var);
+        
+        // Log the result
+        if ($return_var === 0) {
+            error_log('Holler Cache Control: GridPane permissions fix completed successfully');
+            error_log('Holler Cache Control: Command output: ' . implode('\n', $output));
+        } else {
+            error_log('Holler Cache Control: GridPane permissions fix failed with return code: ' . $return_var);
+            error_log('Holler Cache Control: Command output: ' . implode('\n', $output));
+        }
+        
+        return array(
+            'success' => ($return_var === 0),
+            'output' => $output,
+            'return_code' => $return_var
+        );
+    }
+
+    /**
+     * Handle Cloudflare settings check and configuration
+     */
+    private function handle_check_cloudflare_settings() {
+    // Log the action
+    error_log('Holler Cache Control: Starting Cloudflare settings check and configuration');
+    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - handle_check_cloudflare_settings() called' . "\n", FILE_APPEND);
+        
+        try {
+            // Use the full check and configure settings method that actually applies optimizations
+            $result = \Holler\CacheControl\Admin\Cache\Cloudflare::check_and_configure_settings();
+            
+            if ($result['success']) {
+                $details = array();
+                $details[] = 'Connection: Successfully connected to Cloudflare API';
+                
+                // Show current settings if available
+                if (isset($result['settings']) && is_array($result['settings'])) {
+                    $settings = $result['settings'];
+                    
+                    // Display key settings information
+                    if (isset($settings['development_mode'])) {
+                        $details[] = 'Development Mode: ' . ($settings['development_mode']['value'] === 'on' ? 'Enabled' : 'Disabled');
+                    }
+                    
+                    if (isset($settings['browser_cache_ttl'])) {
+                        $details[] = 'Browser Cache TTL: ' . $settings['browser_cache_ttl']['value'] . ' seconds';
+                    }
+                    
+                    if (isset($settings['always_online'])) {
+                        $details[] = 'Always Online: ' . ucfirst($settings['always_online']['value']);
+                    }
+                    
+                    if (isset($settings['rocket_loader'])) {
+                        $details[] = 'Rocket Loader: ' . ucfirst($settings['rocket_loader']['value']);
+                    }
+                    
+                    if (isset($settings['cache_level'])) {
+                        $details[] = 'Cache Level: ' . ucfirst($settings['cache_level']['value']);
+                    }
+                    
+                    if (isset($settings['auto_minify'])) {
+                        $minify = $settings['auto_minify']['value'];
+                        $minify_status = array();
+                        if (isset($minify['html']) && $minify['html']) $minify_status[] = 'HTML';
+                        if (isset($minify['css']) && $minify['css']) $minify_status[] = 'CSS';
+                        if (isset($minify['js']) && $minify['js']) $minify_status[] = 'JS';
+                        $details[] = 'Auto Minify: ' . (empty($minify_status) ? 'Disabled' : implode(', ', $minify_status));
+                    }
+                }
+                
+                // Show optimization results if settings were applied
+                if (isset($result['settings']['optimization_results'])) {
+                    $optimization = $result['settings']['optimization_results'];
+                    if ($optimization['success']) {
+                        $details[] = '\n<strong>✓ Optimization: Recommended settings applied successfully!</strong>';
+                        if (isset($optimization['applied_settings']) && is_array($optimization['applied_settings'])) {
+                            foreach ($optimization['applied_settings'] as $setting) {
+                                $details[] = '  ✓ ' . $setting;
+                            }
+                        }
+                    } else {
+                        $details[] = 'Optimization: ' . $optimization['message'];
+                    }
+                } else {
+                    // Enable auto-optimization for future runs
+                    update_option('cloudflare_auto_optimize', true);
+                    $details[] = '\n<em>Note: Auto-optimization has been enabled. Click "Check Settings" again to apply recommended performance settings.</em>';
+                }
+                
+                add_action('admin_notices', function() use ($details) {
+                    echo '<div class="notice notice-success is-dismissible">';
+                    echo '<p><strong>Cloudflare Settings Check & Configuration: Success!</strong></p>';
+                    if (!empty($details)) {
+                        echo '<ul style="margin-left: 20px;">';
+                        foreach ($details as $detail) {
+                            if (strpos($detail, '\n') !== false) {
+                                echo '<li>' . wp_kses_post(str_replace('\n', '</li><li>', $detail)) . '</li>';
+                            } else {
+                                echo '<li>' . wp_kses_post($detail) . '</li>';
+                            }
+                        }
+                        echo '</ul>';
+                    }
+                    echo '<p><strong>What this does:</strong> This checks your Cloudflare connection and applies recommended performance settings like optimal cache TTL, minification, Always Online, and Rocket Loader for faster WordPress performance.</p>';
+                    echo '</div>';
+                });
+            } else {
+                add_action('admin_notices', function() use ($result) {
+                    echo '<div class="notice notice-error is-dismissible">';
+                    echo '<p><strong>Cloudflare Settings Check Failed:</strong> ' . esc_html($result['message']) . '</p>';
+                    echo '<p>Please verify your Cloudflare credentials in wp-config.php or plugin settings.</p>';
+                    echo '</div>';
+                });
+            }
+            
+        } catch (Exception $e) {
+            error_log('Holler Cache Control: Cloudflare settings check exception: ' . $e->getMessage());
+            add_action('admin_notices', function() use ($e) {
+                echo '<div class="notice notice-error is-dismissible">';
+                echo '<p><strong>Cloudflare Settings Check Error:</strong> ' . esc_html($e->getMessage()) . '</p>';
+                echo '</div>';
+            });
+        }
+    }
+
+    /**
+     * Handle AJAX request for Cloudflare settings check
+     */
+    public function handle_check_cloudflare_settings_ajax() {
+        // Debug: Log that AJAX handler was called
+        error_log('Holler Cache Control: handle_check_cloudflare_settings_ajax() called');
+        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - AJAX handler called: handle_check_cloudflare_settings_ajax' . "\n", FILE_APPEND);
+        
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'holler-cache-control')));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('You do not have sufficient permissions to perform this action.', 'holler-cache-control')));
+        }
+
+        try {
+            // Use the existing Cloudflare settings check method
+            $result = \Holler\CacheControl\Admin\Cache\Cloudflare::check_and_configure_settings();
+            
+            if ($result['success']) {
+                $details = array();
+                $details[] = 'Connection: Successfully connected to Cloudflare API';
+                
+                // Show current settings if available
+                if (isset($result['settings']) && is_array($result['settings'])) {
+                    $settings = $result['settings'];
+                    
+                    // Display key settings information
+                    if (isset($settings['development_mode'])) {
+                        $details[] = 'Development Mode: ' . ($settings['development_mode']['value'] === 'on' ? 'Enabled' : 'Disabled');
+                    }
+                    
+                    if (isset($settings['browser_cache_ttl'])) {
+                        $details[] = 'Browser Cache TTL: ' . $settings['browser_cache_ttl']['value'] . ' seconds';
+                    }
+                    
+                    if (isset($settings['always_online'])) {
+                        $details[] = 'Always Online: ' . ucfirst($settings['always_online']['value']);
+                    }
+                    
+                    if (isset($settings['rocket_loader'])) {
+                        $details[] = 'Rocket Loader: ' . ucfirst($settings['rocket_loader']['value']);
+                    }
+                    
+                    if (isset($settings['cache_level'])) {
+                        $details[] = 'Cache Level: ' . ucfirst($settings['cache_level']['value']);
+                    }
+                    
+                    if (isset($settings['auto_minify'])) {
+                        $minify = $settings['auto_minify']['value'];
+                        $minify_status = array();
+                        if (isset($minify['html']) && $minify['html']) $minify_status[] = 'HTML';
+                        if (isset($minify['css']) && $minify['css']) $minify_status[] = 'CSS';
+                        if (isset($minify['js']) && $minify['js']) $minify_status[] = 'JS';
+                        $details[] = 'Auto Minify: ' . (empty($minify_status) ? 'Disabled' : implode(', ', $minify_status));
+                    }
+                }
+                
+                // Show optimization results if settings were applied
+                if (isset($result['settings']['optimization_results'])) {
+                    $optimization = $result['settings']['optimization_results'];
+                    if ($optimization['success']) {
+                        $details[] = '✓ Optimization: Recommended settings applied successfully!';
+                        if (isset($optimization['applied_settings']) && is_array($optimization['applied_settings'])) {
+                            foreach ($optimization['applied_settings'] as $setting) {
+                                $details[] = '  ✓ ' . $setting;
+                            }
+                        }
+                    } else {
+                        $details[] = 'Optimization: ' . $optimization['message'];
+                    }
+                } else {
+                    // Enable auto-optimization for future runs
+                    update_option('cloudflare_auto_optimize', true);
+                    $details[] = 'Note: Auto-optimization has been enabled. Click "Check Settings" again to apply recommended performance settings.';
+                }
+                
+                wp_send_json_success(array(
+                    'message' => 'Cloudflare settings check completed successfully!',
+                    'details' => $details
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => $result['message']
+                ));
+            }
+            
+        } catch (Exception $e) {
+            error_log('Holler Cache Control: Cloudflare settings check AJAX exception: ' . $e->getMessage());
+            wp_send_json_error(array(
+                'message' => 'An error occurred while checking Cloudflare settings: ' . $e->getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Handle AJAX request for Cloudflare settings check (unique action)
+     */
+    public function handle_cloudflare_check_settings_ajax() {
+        // Debug: Log that AJAX handler was called
+        error_log('Holler Cache Control: handle_cloudflare_check_settings_ajax() called');
+        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - AJAX handler called: handle_cloudflare_check_settings_ajax' . "\n", FILE_APPEND);
+        
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'holler-cache-control')));
+            return;
+        }
+        
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'holler-cache-control')));
+            return;
+        }
+        
+        try {
+            // Use the existing Cloudflare settings check method
+            $result = \Holler\CacheControl\Admin\Cache\Cloudflare::check_and_configure_settings();
+            
+            if ($result['success']) {
+                $details = array();
+                $details[] = 'Connection: Successfully connected to Cloudflare API';
+                
+                // Show current settings if available
+                if (isset($result['settings']) && is_array($result['settings'])) {
+                    $settings = $result['settings'];
+                    
+                    if (isset($settings['development_mode'])) {
+                        $details[] = 'Development Mode: ' . ($settings['development_mode']['value'] === 'on' ? 'Enabled' : 'Disabled');
+                    }
+                    
+                    if (isset($settings['browser_cache_ttl'])) {
+                        $details[] = 'Browser Cache TTL: ' . $settings['browser_cache_ttl']['value'] . ' seconds';
+                    }
+                    
+                    if (isset($settings['always_online'])) {
+                        $details[] = 'Always Online: ' . ucfirst($settings['always_online']['value']);
+                    }
+                    
+                    if (isset($settings['rocket_loader'])) {
+                        $details[] = 'Rocket Loader: ' . ucfirst($settings['rocket_loader']['value']);
+                    }
+                    
+                    if (isset($settings['cache_level'])) {
+                        $details[] = 'Cache Level: ' . ucfirst($settings['cache_level']['value']);
+                    }
+                    
+                    if (isset($settings['auto_minify'])) {
+                        $minify = $settings['auto_minify']['value'];
+                        $minify_status = array();
+                        if (isset($minify['html']) && $minify['html']) $minify_status[] = 'HTML';
+                        if (isset($minify['css']) && $minify['css']) $minify_status[] = 'CSS';
+                        if (isset($minify['js']) && $minify['js']) $minify_status[] = 'JS';
+                        $details[] = 'Auto Minify: ' . (empty($minify_status) ? 'Disabled' : implode(', ', $minify_status));
+                    }
+                }
+                
+                // Show optimization results if settings were applied
+                if (isset($result['settings']['optimization_results'])) {
+                    $optimization = $result['settings']['optimization_results'];
+                    if ($optimization['success']) {
+                        $details[] = '✓ Optimization: Recommended settings applied successfully!';
+                        if (isset($optimization['applied_settings']) && is_array($optimization['applied_settings'])) {
+                            foreach ($optimization['applied_settings'] as $setting) {
+                                $details[] = '  ✓ ' . $setting;
+                            }
+                        }
+                    } else {
+                        $details[] = 'Optimization: ' . $optimization['message'];
+                    }
+                } else {
+                    // Enable auto-optimization for future runs
+                    update_option('cloudflare_auto_optimize', true);
+                    $details[] = 'Note: Auto-optimization has been enabled. Click "Check Settings" again to apply recommended performance settings.';
+                }
+                
+                wp_send_json_success(array(
+                    'message' => 'Cloudflare settings check completed successfully!',
+                    'details' => $details
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => $result['message']
+                ));
+            }
+        } catch (Exception $e) {
+            error_log('Holler Cache Control: Cloudflare settings check error: ' . $e->getMessage());
+            wp_send_json_error(array(
+                'message' => 'Error checking Cloudflare settings: ' . $e->getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Test AJAX Handler
+     */
+    public function test_ajax_handler() {
+        error_log('Test AJAX handler called');
+        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Test AJAX handler called' . "\n", FILE_APPEND);
+        wp_send_json_success(array('message' => 'Test successful!'));
+    }
+
+    /**
+     * Simple Cloudflare Settings Check Handler
+     */
+    public function handle_simple_cloudflare_check() {
+        // Debug logging
+        error_log('Simple Cloudflare check called');
+        
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_check')) {
+            wp_send_json_error(array('message' => 'Security check failed'));
+            return;
+        }
+        
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
+        }
+        
+        try {
+            // Get Cloudflare credentials
+            $cloudflare = new \Holler\CacheControl\Admin\Cache\Cloudflare();
+            $credentials = $cloudflare->get_credentials();
+            
+            if (!$credentials['email'] || !$credentials['api_key'] || !$credentials['zone_id']) {
+                wp_send_json_error(array(
+                    'message' => 'Cloudflare credentials not configured. Please set your API credentials in the settings.'
+                ));
+                return;
+            }
+            
+            // Test connection
+            $api = new \Holler\CacheControl\API\CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+            
+            // Get zone settings
+            $settings = $api->get_zone_settings();
+            
+            if (!$settings) {
+                wp_send_json_error(array(
+                    'message' => 'Failed to connect to Cloudflare API. Please check your credentials.'
+                ));
+                return;
+            }
+            
+            // Build response details
+            $details = array();
+            $details[] = '🔗 Successfully connected to Cloudflare API';
+            $details[] = '📧 Email: ' . $credentials['email'];
+            $details[] = '🌐 Zone ID: ' . substr($credentials['zone_id'], 0, 8) . '...';
+            
+            // Add current settings
+            if (isset($settings['development_mode'])) {
+                $dev_mode = $settings['development_mode']['value'] === 'on' ? 'Enabled' : 'Disabled';
+                $details[] = '🔧 Development Mode: ' . $dev_mode;
+            }
+            
+            if (isset($settings['cache_level'])) {
+                $details[] = '📈 Cache Level: ' . ucfirst($settings['cache_level']['value']);
+            }
+            
+            if (isset($settings['browser_cache_ttl'])) {
+                $ttl = $settings['browser_cache_ttl']['value'];
+                $details[] = '⏱️ Browser Cache TTL: ' . $ttl . ' seconds';
+            }
+            
+            wp_send_json_success(array(
+                'message' => 'Cloudflare connection successful!',
+                'details' => $details
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Cloudflare check error: ' . $e->getMessage());
+            wp_send_json_error(array(
+                'message' => 'Error: ' . $e->getMessage()
+            ));
+        }
+    }
+
+    /**
      * Register plugin settings
      */
     public function register_settings() {
@@ -944,6 +1517,26 @@ class Tools {
             )
         );
 
+        // Register smart cache invalidation settings
+        register_setting(
+            'holler_cache_control_settings',  // Option group
+            'holler_cache_control_smart_invalidation', // Option name
+            array(
+                'type' => 'object',
+                'description' => 'Holler Cache Control Smart Invalidation Settings',
+                'sanitize_callback' => array($this, 'sanitize_smart_invalidation_settings'),
+                'show_in_rest' => false,
+                'default' => array(
+                    'strategy' => 'smart',
+                    'enabled_layers' => array('local', 'server', 'external'),
+                    'enabled_scopes' => array('page', 'category', 'site'),
+                    'manual_purge_scope' => 'site',
+                    'cloudflare_selective_enabled' => true,
+                    'auto_analysis_enabled' => true
+                )
+            )
+        );
+
         // Add settings sections
         add_settings_section(
             'holler_cache_control_visibility',
@@ -956,6 +1549,13 @@ class Tools {
             'holler_cache_control_auto_purge',
             'Automatic Cache Purging',
             array($this, 'render_auto_purge_section'),
+            'holler_cache_control_settings'
+        );
+
+        add_settings_section(
+            'holler_cache_control_smart_invalidation',
+            'Smart Cache Invalidation',
+            array($this, 'render_smart_invalidation_section'),
             'holler_cache_control_settings'
         );
 
@@ -1003,12 +1603,50 @@ class Tools {
             'holler_cache_control_settings',
             'holler_cache_control_auto_purge'
         );
+
+        // Add smart invalidation strategy field
+        add_settings_field(
+            'invalidation_strategy',
+            'Cache Invalidation Strategy',
+            array($this, 'render_invalidation_strategy_field'),
+            'holler_cache_control_settings',
+            'holler_cache_control_smart_invalidation'
+        );
+
+        // Add cache layers control field
+        add_settings_field(
+            'smart_cache_layers',
+            'Enabled Cache Layers',
+            array($this, 'render_smart_cache_layers_field'),
+            'holler_cache_control_settings',
+            'holler_cache_control_smart_invalidation'
+        );
+
+        // Add invalidation scopes field
+        add_settings_field(
+            'invalidation_scopes',
+            'Invalidation Scopes',
+            array($this, 'render_invalidation_scopes_field'),
+            'holler_cache_control_settings',
+            'holler_cache_control_smart_invalidation'
+        );
+
+        // Add Cloudflare selective purging field
+        add_settings_field(
+            'cloudflare_selective',
+            'Cloudflare Selective Purging',
+            array($this, 'render_cloudflare_selective_field'),
+            'holler_cache_control_settings',
+            'holler_cache_control_smart_invalidation'
+        );
     }
 
-    /**
-     * Sanitize auto-purge settings
-     */
-    public function sanitize_auto_purge_settings($input) {
+
+
+/**
+ * Sanitize auto-purge settings
+ */
+public function sanitize_auto_purge_settings($input) {
         try {
             // Log the input for debugging
             error_log('Holler Cache Control - Sanitizing auto-purge settings: ' . print_r($input, true));
@@ -1589,10 +2227,114 @@ class Tools {
     /**
      * Handle the async cache purge cron event
      */
-    public function handle_async_cache_purge() {
-        error_log('Holler Cache Control: Executing async cache purge');
-        $this->purge_all_caches();
-        error_log('Holler Cache Control: Async cache purge completed');
+    public function handle_async_cache_purge($post_id = null, $context = 'async') {
+        error_log("Holler Cache Control: Executing async cache purge - Post ID: " . ($post_id ?? 'none') . ", Context: {$context}");
+        
+        // Use SmartInvalidation for async purges
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate($post_id, $context);
+    }
+    
+    /**
+     * Register smart invalidation hooks for auto-purge events
+     */
+    private function register_smart_invalidation_hooks() {
+        // Only register hooks if auto-purge is enabled
+        $auto_purge_settings = get_option('holler_cache_auto_purge_settings', []);
+        
+        if (!empty($auto_purge_settings['events']['save_post'])) {
+            add_action('save_post', [$this, 'handle_smart_save_post'], 10, 1);
+            add_action('publish_post', [$this, 'handle_smart_publish_post'], 10, 1);
+        }
+        
+        if (!empty($auto_purge_settings['events']['delete_post'])) {
+            add_action('delete_post', [$this, 'handle_smart_delete_post'], 10, 1);
+            add_action('wp_trash_post', [$this, 'handle_smart_trash_post'], 10, 1);
+        }
+        
+        if (!empty($auto_purge_settings['events']['menu_update'])) {
+            add_action('wp_update_nav_menu', [$this, 'handle_smart_menu_update'], 10, 1);
+        }
+        
+        if (!empty($auto_purge_settings['events']['theme_switch'])) {
+            add_action('switch_theme', [$this, 'handle_smart_theme_switch'], 10, 1);
+            add_action('customize_save_after', [$this, 'handle_smart_customizer_save'], 10, 1);
+        }
+    }
+    
+    /**
+     * Handle smart cache invalidation on post save
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_smart_save_post($post_id) {
+        // Skip if this is an auto-save or revision
+        if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            return;
+        }
+        
+        // Skip during Elementor editing sessions
+        if ($this->is_elementor_editing_session()) {
+            error_log("Holler Cache Control: Skipping smart invalidation during Elementor editing session");
+            return;
+        }
+        
+        // Use SmartInvalidation for context-aware purging
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate($post_id, 'save_post');
+    }
+    
+    /**
+     * Handle smart cache invalidation on post publish
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_smart_publish_post($post_id) {
+        // Use SmartInvalidation for publish events
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate($post_id, 'publish_post');
+    }
+    
+    /**
+     * Handle smart cache invalidation on post delete
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_smart_delete_post($post_id) {
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate($post_id, 'delete_post');
+    }
+    
+    /**
+     * Handle smart cache invalidation on post trash
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_smart_trash_post($post_id) {
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate($post_id, 'trash_post');
+    }
+    
+    /**
+     * Handle smart cache invalidation on menu update
+     *
+     * @param int $menu_id Menu ID
+     */
+    public function handle_smart_menu_update($menu_id) {
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate(null, 'wp_update_nav_menu');
+    }
+    
+    /**
+     * Handle smart cache invalidation on theme switch
+     *
+     * @param string $new_theme New theme name
+     */
+    public function handle_smart_theme_switch($new_theme) {
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate(null, 'switch_theme');
+    }
+    
+    /**
+     * Handle smart cache invalidation on customizer save
+     *
+     * @param \WP_Customize_Manager $manager Customizer manager
+     */
+    public function handle_smart_customizer_save($manager) {
+        \Holler\CacheControl\Admin\Cache\SmartInvalidation::invalidate(null, 'customize_save_after');
     }
 
     /**
@@ -2543,6 +3285,201 @@ class Tools {
             wp_send_json_error(array(
                 'message' => $result['message']
             ));
+        }
+    }
+    
+    /**
+     * Render invalidation strategy field
+     */
+    public function render_invalidation_strategy_field() {
+        $settings = get_option('holler_cache_control_smart_invalidation', array());
+        $strategy = isset($settings['strategy']) ? $settings['strategy'] : 'smart';
+        
+        echo '<div class="holler-field-group">';
+        echo '<div class="holler-radio-group">';
+        
+        $strategies = array(
+            'full' => array(
+                'label' => 'Full Cache Purge',
+                'description' => 'Always purge all caches (fastest, but uses more resources)'
+            ),
+            'selective' => array(
+                'label' => 'Selective Purge',
+                'description' => 'Purge only related URLs and pages (balanced approach)'
+            ),
+            'smart' => array(
+                'label' => 'Smart Analysis',
+                'description' => 'Analyze content changes and purge intelligently (recommended)'
+            )
+        );
+        
+        foreach ($strategies as $value => $info) {
+            $checked = checked($strategy, $value, false);
+            echo '<label class="holler-radio-option">';
+            echo '<input type="radio" name="holler_cache_control_smart_invalidation[strategy]" value="' . esc_attr($value) . '" ' . $checked . ' />';
+            echo '<span class="holler-radio-label">';
+            echo '<strong>' . esc_html($info['label']) . '</strong><br>';
+            echo '<small>' . esc_html($info['description']) . '</small>';
+            echo '</span>';
+            echo '</label>';
+        }
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    /**
+     * Render smart cache layers field
+     */
+    public function render_smart_cache_layers_field() {
+        $settings = get_option('holler_cache_control_smart_invalidation', array());
+        $enabled_layers = isset($settings['enabled_layers']) ? $settings['enabled_layers'] : array('local', 'server', 'external');
+        
+        echo '<div class="holler-field-group">';
+        echo '<div class="holler-checkbox-grid">';
+        
+        $layers = array(
+            'local' => array(
+                'label' => 'Local Caches',
+                'description' => 'OPcache, Object Cache'
+            ),
+            'server' => array(
+                'label' => 'Server Caches', 
+                'description' => 'Nginx, Redis Page Cache'
+            ),
+            'external' => array(
+                'label' => 'External Services',
+                'description' => 'Cloudflare, CDN'
+            )
+        );
+        
+        foreach ($layers as $value => $info) {
+            $checked = in_array($value, $enabled_layers) ? 'checked="checked"' : '';
+            echo '<label class="holler-checkbox-option">';
+            echo '<input type="checkbox" name="holler_cache_control_smart_invalidation[enabled_layers][]" value="' . esc_attr($value) . '" ' . $checked . ' />';
+            echo '<span class="holler-checkbox-label">';
+            echo '<strong>' . esc_html($info['label']) . '</strong><br>';
+            echo '<small>' . esc_html($info['description']) . '</small>';
+            echo '</span>';
+            echo '</label>';
+        }
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    /**
+     * Render invalidation scopes field
+     */
+    public function render_invalidation_scopes_field() {
+        $settings = get_option('holler_cache_control_smart_invalidation', array());
+        $enabled_scopes = isset($settings['enabled_scopes']) ? $settings['enabled_scopes'] : array('page', 'category', 'site');
+        
+        echo '<div class="holler-field-group">';
+        echo '<div class="holler-checkbox-grid">';
+        
+        $scopes = array(
+            'page' => array(
+                'label' => 'Page Level',
+                'description' => 'Individual pages and posts'
+            ),
+            'category' => array(
+                'label' => 'Category Level',
+                'description' => 'Archive pages, taxonomies'
+            ),
+            'site' => array(
+                'label' => 'Site Level',
+                'description' => 'Homepage, feeds, sitemaps'
+            )
+        );
+        
+        foreach ($scopes as $value => $info) {
+            $checked = in_array($value, $enabled_scopes) ? 'checked="checked"' : '';
+            echo '<label class="holler-checkbox-option">';
+            echo '<input type="checkbox" name="holler_cache_control_smart_invalidation[enabled_scopes][]" value="' . esc_attr($value) . '" ' . $checked . ' />';
+            echo '<span class="holler-checkbox-label">';
+            echo '<strong>' . esc_html($info['label']) . '</strong><br>';
+            echo '<small>' . esc_html($info['description']) . '</small>';
+            echo '</span>';
+            echo '</label>';
+        }
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    /**
+     * Render Cloudflare selective purging field
+     */
+    public function render_cloudflare_selective_field() {
+        $settings = get_option('holler_cache_control_smart_invalidation', array());
+        $selective_enabled = isset($settings['cloudflare_selective_enabled']) ? $settings['cloudflare_selective_enabled'] : true;
+        $auto_analysis = isset($settings['auto_analysis_enabled']) ? $settings['auto_analysis_enabled'] : true;
+        
+        echo '<div class="holler-field-group">';
+        echo '<div class="holler-toggle-group">';
+        
+        // Selective purging toggle
+        echo '<label class="holler-toggle-option">';
+        echo '<input type="checkbox" name="holler_cache_control_smart_invalidation[cloudflare_selective_enabled]" value="1" ' . checked($selective_enabled, true, false) . ' />';
+        echo '<span class="holler-toggle-label">';
+        echo '<strong>Enable Selective URL Purging</strong><br>';
+        echo '<small>Purge specific URLs instead of entire Cloudflare cache (reduces API usage)</small>';
+        echo '</span>';
+        echo '</label>';
+        
+        // Auto analysis toggle
+        echo '<label class="holler-toggle-option">';
+        echo '<input type="checkbox" name="holler_cache_control_smart_invalidation[auto_analysis_enabled]" value="1" ' . checked($auto_analysis, true, false) . ' />';
+        echo '<span class="holler-toggle-label">';
+        echo '<strong>Automatic Content Analysis</strong><br>';
+        echo '<small>Analyze content changes to determine optimal purge strategy</small>';
+        echo '</span>';
+        echo '</label>';
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    /**
+     * Render smart invalidation section description
+     */
+    public function render_smart_invalidation_section() {
+        echo '<p>Configure intelligent cache invalidation strategies to optimize performance and reduce unnecessary cache purging.</p>';
+    }
+    
+    /**
+     * Sanitize smart invalidation settings
+     */
+    public function sanitize_smart_invalidation_settings($input) {
+        try {
+            error_log('Holler Cache Control - Sanitizing smart invalidation settings: ' . print_r($input, true));
+            
+            if (!is_array($input)) {
+                error_log('Holler Cache Control - Smart invalidation input is not an array, using empty array');
+                $input = array();
+            }
+            
+            $sanitized = array(
+                'strategy' => isset($input['strategy']) && in_array($input['strategy'], array('full', 'selective', 'smart')) ? $input['strategy'] : 'smart',
+                'enabled_layers' => isset($input['enabled_layers']) && is_array($input['enabled_layers']) ? array_intersect($input['enabled_layers'], array('local', 'server', 'external')) : array('local', 'server', 'external'),
+                'enabled_scopes' => isset($input['enabled_scopes']) && is_array($input['enabled_scopes']) ? array_intersect($input['enabled_scopes'], array('page', 'category', 'site')) : array('page', 'category', 'site'),
+                'cloudflare_selective_enabled' => !empty($input['cloudflare_selective_enabled']),
+                'auto_analysis_enabled' => !empty($input['auto_analysis_enabled'])
+            );
+            
+            error_log('Holler Cache Control - Sanitized smart invalidation settings: ' . print_r($sanitized, true));
+            return $sanitized;
+            
+        } catch (Exception $e) {
+            error_log('Holler Cache Control - Error sanitizing smart invalidation settings: ' . $e->getMessage());
+            return array(
+                'strategy' => 'smart',
+                'enabled_layers' => array('local', 'server', 'external'),
+                'enabled_scopes' => array('page', 'category', 'site'),
+                'cloudflare_selective_enabled' => true,
+                'auto_analysis_enabled' => true
+            );
         }
     }
 }

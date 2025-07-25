@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-01-25
+
+### Added
+- **🎛️ Comprehensive Cloudflare Settings Controls**: Complete management interface for all major Cloudflare zone settings
+  - **Essential Controls**: Development Mode, Cache Level, Browser Cache TTL, Always Online
+  - **Advanced Controls**: Rocket Loader, Auto Minify (HTML/CSS/JS), Security Level, SSL Mode
+  - **Real-time Updates**: All settings update immediately via Cloudflare API with instant feedback
+  - **One-click Optimization**: "Apply Recommended Settings" button for performance-focused defaults
+  - **Current Settings Loader**: "Load Current Settings" button to populate controls with existing configuration
+- **🔧 Enhanced Cloudflare Diagnostics**: Improved "Check & Configure Settings" functionality
+  - **Detailed Configuration Display**: Shows comprehensive zone settings with emojis and clear formatting
+  - **Reliable AJAX Implementation**: Standalone AJAX handler bypasses complex registration issues
+  - **Professional UI**: Beautiful toggle switches, dropdowns, and grid layout with responsive design
+- **⚡ Standalone AJAX System**: New `cloudflare-ajax.php` file for reliable Cloudflare API operations
+  - **Multiple Handlers**: Support for loading, updating individual settings, minify controls, and bulk updates
+  - **Robust Error Handling**: Comprehensive nonce verification, capability checks, and API error reporting
+  - **Smart Minification**: Combined HTML/CSS/JS minification controls with individual toggle support
+
+### Changed
+- **🚀 Cloudflare Tab Experience**: Completely redesigned with professional controls and instant feedback
+- **📊 Settings Display**: Enhanced configuration details with emojis, clear labeling, and organized layout
+- **🔄 API Integration**: Improved Cloudflare API communication with better error handling and timeout management
+- **💡 User Experience**: Streamlined workflow from diagnostics to configuration to optimization
+
+### Fixed
+- **✅ AJAX Handler Registration**: Resolved complex class loading issues with standalone handler approach
+- **🔧 Credential Detection**: Fixed `$has_credentials` variable definition for proper UI visibility
+- **📱 Responsive Design**: Improved mobile and tablet compatibility for settings controls
+- **🛡️ Security**: Enhanced nonce verification and capability checks across all AJAX endpoints
+
+### Technical Details
+- **New Files**: `cloudflare-ajax.php` - Standalone AJAX handler system
+- **Enhanced Files**: Cloudflare tab UI with comprehensive settings controls and professional styling
+- **API Integration**: Direct Cloudflare API v4 integration for real-time settings management
+- **Performance**: Optimized AJAX calls with proper error handling and user feedback
+
 ## [1.4.0] - 2024-12-24
 
 ### Added

@@ -55,6 +55,21 @@ if (!defined('ABSPATH')) {
                 echo '</div>';
             }
             
+            // Smart Cache Invalidation Section
+            if (isset($wp_settings_fields['holler_cache_control_settings']['holler_cache_control_smart_invalidation'])) {
+                echo '<div class="settings-section" style="margin-bottom: 40px;">';
+                echo '<h3 style="margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">' . __('Smart Cache Invalidation', 'holler-cache-control') . '</h3>';
+                echo '<p style="margin-bottom: 20px; color: #666;">' . __('Configure intelligent cache purging strategies for optimal performance and selective invalidation.', 'holler-cache-control') . '</p>';
+                
+                foreach ($wp_settings_fields['holler_cache_control_settings']['holler_cache_control_smart_invalidation'] as $field) {
+                    echo '<div class="settings-field" style="margin-bottom: 30px;">';
+                    echo '<h4>' . $field['title'] . '</h4>';
+                    call_user_func($field['callback'], $field['args']);
+                    echo '</div>';
+                }
+                echo '</div>';
+            }
+            
             submit_button(__('Save All Settings', 'holler-cache-control'), 'primary', 'submit', true, array('style' => 'margin-top: 20px;'));
             ?>
         </form>

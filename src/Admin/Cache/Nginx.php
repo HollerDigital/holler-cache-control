@@ -18,12 +18,22 @@ class Nginx {
      * @return array Status information
      */
     public static function get_status() {
+        return StatusCache::get_status('nginx', [__CLASS__, 'get_fresh_status']);
+    }
+    
+    /**
+     * Get fresh Nginx status (called by StatusCache when cache is expired)
+     *
+     * @return array Status information
+     */
+    public static function get_fresh_status() {
         try {
             $status = array(
                 'status' => 'inactive',
                 'message' => __('Nginx Page Caching is not configured.', 'holler-cache-control'),
                 'type' => null
             );
+            $details = array();
 
             $cache_method = get_nginx_cache_method();
             
@@ -33,13 +43,24 @@ class Nginx {
                     $status['status'] = 'active';
                     $status['message'] = __('Nginx Redis Page Caching is enabled and configured.', 'holler-cache-control');
                     $status['type'] = 'redis';
+                    
+                    // Get Redis page cache statistics
+                    $details = self::get_redis_page_cache_stats($redis_settings);
                 }
             } elseif ($cache_method === 'enable_fastcgi') {
                 if (defined('RT_WP_NGINX_HELPER_CACHE_PATH') && is_dir(RT_WP_NGINX_HELPER_CACHE_PATH)) {
                     $status['status'] = 'active';
                     $status['message'] = __('Nginx FastCGI Page Caching is enabled and configured.', 'holler-cache-control');
                     $status['type'] = 'fastcgi';
+                    
+                    // Get FastCGI cache statistics
+                    $details = self::get_fastcgi_cache_stats();
                 }
+            }
+            
+            // Add details if we have them
+            if (!empty($details)) {
+                $status['details'] = $details;
             }
 
             return $status;
@@ -52,6 +73,166 @@ class Nginx {
             );
         }
     }
+    
+    /**
+     * Get Redis page cache statistics
+     */
+    private static function get_redis_page_cache_stats($redis_settings) {
+        $details = array();
+        
+        try {
+            $redis = new \Redis();
+            $connected = $redis->connect($redis_settings['hostname'], $redis_settings['port']);
+            
+            if ($connected) {
+                $info = $redis->info();
+                
+                // Get memory usage
+                $memory_usage = isset($info['used_memory_human']) ? $info['used_memory_human'] : 'Unknown';
+                
+                // Get key count for page cache (assuming nginx page cache uses a specific pattern)
+                $page_cache_keys = 0;
+                try {
+                    $keys = $redis->keys('nginx-cache:*');
+                    $page_cache_keys = is_array($keys) ? count($keys) : 0;
+                } catch (Exception $e) {
+                    // Fallback to total keys if pattern search fails
+                    if (isset($info['db0'])) {
+                        if (preg_match('/keys=(\d+)/', $info['db0'], $matches)) {
+                            $page_cache_keys = (int)$matches[1];
+                        }
+                    }
+                }
+                
+                // Format uptime inline
+                $uptime_formatted = 'Unknown';
+                if (isset($info['uptime_in_seconds'])) {
+                    $seconds = (int)$info['uptime_in_seconds'];
+                    $days = floor($seconds / 86400);
+                    $hours = floor(($seconds % 86400) / 3600);
+                    $minutes = floor(($seconds % 3600) / 60);
+                    
+                    if ($days > 0) {
+                        $uptime_formatted = $days . ' days, ' . $hours . ' hours';
+                    } elseif ($hours > 0) {
+                        $uptime_formatted = $hours . ' hours, ' . $minutes . ' minutes';
+                    } else {
+                        $uptime_formatted = $minutes . ' minutes';
+                    }
+                }
+                
+                $details = array(
+                    'Cache Type' => 'Redis',
+                    'Memory Usage' => $memory_usage,
+                    'Total Keys' => $page_cache_keys,
+                    'Max Memory' => isset($info['maxmemory_human']) ? $info['maxmemory_human'] : 'No limit',
+                    'Eviction Policy' => isset($info['maxmemory_policy']) ? $info['maxmemory_policy'] : 'Unknown',
+                    'Uptime' => $uptime_formatted
+                );
+                
+                // Add hit/miss statistics if available
+                if (isset($info['keyspace_hits']) && isset($info['keyspace_misses'])) {
+                    $hits = (int)$info['keyspace_hits'];
+                    $misses = (int)$info['keyspace_misses'];
+                    $total = $hits + $misses;
+                    $hit_rate = $total > 0 ? round(($hits / $total) * 100, 2) : 0;
+                    
+                    $details['Cache Hit Rate'] = $hit_rate . '%';
+                    $details['Cache Hits'] = number_format($hits);
+                    $details['Cache Misses'] = number_format($misses);
+                }
+                
+                $redis->close();
+            }
+        } catch (Exception $e) {
+            error_log('Holler Cache Control: Error getting Redis page cache stats: ' . $e->getMessage());
+        }
+        
+        return $details;
+    }
+    
+    /**
+     * Get FastCGI cache statistics
+     */
+    private static function get_fastcgi_cache_stats() {
+        $details = array();
+        
+        if (defined('RT_WP_NGINX_HELPER_CACHE_PATH') && is_dir(RT_WP_NGINX_HELPER_CACHE_PATH)) {
+            $cache_path = RT_WP_NGINX_HELPER_CACHE_PATH;
+            
+            // Get cache directory size and file count
+            $cache_size = self::get_directory_size($cache_path);
+            $file_count = self::count_cache_files($cache_path);
+            
+            $details = array(
+                'Cache Type' => 'FastCGI',
+                'Cache Path' => $cache_path,
+                'Cache Size' => self::format_bytes($cache_size),
+                'Cache Files' => number_format($file_count),
+                'Status' => is_writable($cache_path) ? 'Writable' : 'Read-only'
+            );
+            
+            // Add cache age information
+            $oldest_file = self::get_oldest_cache_file($cache_path);
+            if ($oldest_file) {
+                $age = time() - filemtime($oldest_file);
+                $details['Oldest Cache'] = self::format_uptime($age) . ' ago';
+            }
+        }
+        
+        return $details;
+    }
+    
+    /**
+     * Get directory size recursively
+     */
+    private static function get_directory_size($directory) {
+        $size = 0;
+        if (is_dir($directory)) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory)) as $file) {
+                if ($file->isFile()) {
+                    $size += $file->getSize();
+                }
+            }
+        }
+        return $size;
+    }
+    
+    /**
+     * Count cache files in directory
+     */
+    private static function count_cache_files($directory) {
+        $count = 0;
+        if (is_dir($directory)) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory)) as $file) {
+                if ($file->isFile()) {
+                    $count++;
+                }
+            }
+        }
+        return $count;
+    }
+    
+    /**
+     * Get oldest cache file
+     */
+    private static function get_oldest_cache_file($directory) {
+        $oldest_file = null;
+        $oldest_time = time();
+        
+        if (is_dir($directory)) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory)) as $file) {
+                if ($file->isFile() && $file->getMTime() < $oldest_time) {
+                    $oldest_time = $file->getMTime();
+                    $oldest_file = $file->getPathname();
+                }
+            }
+        }
+        
+        return $oldest_file;
+    }
+    
+
 
     /**
      * Get status message based on configuration
@@ -555,28 +736,5 @@ class Nginx {
         return !empty($config) ? $config : false;
     }
 
-    /**
-     * Format uptime into a human-readable string
-     *
-     * @param int $seconds Uptime in seconds
-     * @return string Formatted uptime
-     */
-    private static function format_uptime($seconds) {
-        $days = floor($seconds / 86400);
-        $hours = floor(($seconds % 86400) / 3600);
-        $minutes = floor(($seconds % 3600) / 60);
 
-        $parts = array();
-        if ($days > 0) {
-            $parts[] = $days . ' ' . _n('day', 'days', $days, 'holler-cache-control');
-        }
-        if ($hours > 0) {
-            $parts[] = $hours . ' ' . _n('hour', 'hours', $hours, 'holler-cache-control');
-        }
-        if ($minutes > 0 && count($parts) < 2) {
-            $parts[] = $minutes . ' ' . _n('minute', 'minutes', $minutes, 'holler-cache-control');
-        }
-
-        return implode(', ', $parts);
-    }
 }

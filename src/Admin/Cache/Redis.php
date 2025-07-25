@@ -14,17 +14,69 @@ class Redis {
      * @return array Status information
      */
     public static function get_status() {
+        return StatusCache::get_status('redis', [__CLASS__, 'get_fresh_status']);
+    }
+    
+    /**
+     * Get fresh Redis status (called by StatusCache when cache is expired)
+     *
+     * @return array Status information
+     */
+    public static function get_fresh_status() {
         global $wp_object_cache;
 
         $has_extension = class_exists('Redis');
         $is_connected = false;
         $is_dropin = file_exists(WP_CONTENT_DIR . '/object-cache.php');
+        $details = array();
 
         if ($has_extension && $is_dropin) {
             $is_connected = is_object($wp_object_cache) && method_exists($wp_object_cache, 'redis_status') && $wp_object_cache->redis_status();
+            
+            // Get detailed Redis statistics if connected
+            if ($is_connected && method_exists($wp_object_cache, 'redis_instance')) {
+                try {
+                    $redis = $wp_object_cache->redis_instance();
+                    if ($redis && method_exists($redis, 'info')) {
+                        $info = $redis->info();
+                        
+                        // Extract key statistics
+                        $memory_usage = isset($info['used_memory_human']) ? $info['used_memory_human'] : 'Unknown';
+                        
+                        // Extract keys count from db0 info
+                        $keys_count = '0';
+                        if (isset($info['db0'])) {
+                            if (preg_match('/keys=(\d+)/', $info['db0'], $matches)) {
+                                $keys_count = $matches[1];
+                            }
+                        }
+                        
+                        $details = array(
+                            'Memory Usage' => $memory_usage,
+                            'Keys' => $keys_count,
+                            'Connected Clients' => isset($info['connected_clients']) ? $info['connected_clients'] : 'Unknown',
+                            'Uptime' => isset($info['uptime_in_seconds']) ? self::format_uptime($info['uptime_in_seconds']) : 'Unknown'
+                        );
+                        
+                        // Add hit/miss statistics if available
+                        if (isset($info['keyspace_hits']) && isset($info['keyspace_misses'])) {
+                            $hits = (int)$info['keyspace_hits'];
+                            $misses = (int)$info['keyspace_misses'];
+                            $total = $hits + $misses;
+                            $hit_ratio = $total > 0 ? round(($hits / $total) * 100, 2) : 0;
+                            
+                            $details['Hits'] = number_format($hits);
+                            $details['Misses'] = number_format($misses);
+                            $details['Hit Ratio'] = $hit_ratio . '%';
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log('Holler Cache Control: Error getting Redis info: ' . $e->getMessage());
+                }
+            }
         }
 
-        return array(
+        $status_info = array(
             'enabled' => true,
             'configured' => $has_extension && $is_dropin && $is_connected,
             'status' => $has_extension && $is_dropin && $is_connected ? 'active' : ($has_extension ? ($is_dropin ? 'not_connected' : 'no_dropin') : 'not_configured'),
@@ -34,7 +86,16 @@ class Redis {
                     : __('Redis object-cache.php drop-in not installed.', 'holler-cache-control')
                 ) : __('Redis extension not installed.', 'holler-cache-control')
         );
+        
+        // Add details if we have them
+        if (!empty($details)) {
+            $status_info['details'] = $details;
+        }
+        
+        return $status_info;
     }
+    
+
 
     /**
      * Execute a command safely in WordPress environment

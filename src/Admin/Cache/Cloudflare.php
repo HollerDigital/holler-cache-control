@@ -30,11 +30,22 @@ class Cloudflare {
      * @return array Status information including credential sources
      */
     public static function get_status() {
+        return StatusCache::get_status('cloudflare', [__CLASS__, 'get_fresh_status']);
+    }
+    
+    /**
+     * Get fresh Cloudflare status (called by StatusCache when cache is expired)
+     *
+     * @return array Status information including credential sources
+     */
+    public static function get_fresh_status() {
         $credentials = self::get_credentials();
         $is_configured = !empty($credentials['email']) && !empty($credentials['api_key']) && !empty($credentials['zone_id']);
         
         // Build status message with source information
         $message = '';
+        $details = array();
+        
         if ($is_configured) {
             if ($credentials['all_from_config']) {
                 $message = __('Cloudflare cache is active (credentials from wp-config.php).', 'holler-cache-control');
@@ -56,11 +67,34 @@ class Cloudflare {
                     $message = __('Cloudflare cache is active (credentials from admin settings).', 'holler-cache-control');
                 }
             }
+            
+            // Get detailed Cloudflare settings if configured
+            try {
+                // Get development mode status
+                $dev_mode = self::get_development_mode();
+                if ($dev_mode && isset($dev_mode['value'])) {
+                    $details['Development Mode'] = $dev_mode['value'] === 'on' ? 'Enabled' : 'Disabled';
+                    if ($dev_mode['value'] === 'on' && isset($dev_mode['time_remaining'])) {
+                        $hours = floor($dev_mode['time_remaining'] / 3600);
+                        $minutes = floor(($dev_mode['time_remaining'] % 3600) / 60);
+                        $details['Dev Mode Remaining'] = $hours . 'h ' . $minutes . 'm';
+                    }
+                }
+                
+                // Add credential source info
+                $details['Email Source'] = $credentials['sources']['email_source'] === 'wp-config' ? 'wp-config.php' : 'Admin Settings';
+                $details['API Key Source'] = $credentials['sources']['api_key_source'] === 'wp-config' ? 'wp-config.php' : 'Admin Settings';
+                $details['Zone ID Source'] = $credentials['sources']['zone_id_source'] === 'wp-config' ? 'wp-config.php' : 'Admin Settings';
+                
+            } catch (Exception $e) {
+                error_log('Holler Cache Control: Error getting Cloudflare details: ' . $e->getMessage());
+                $details['Status'] = 'Connected (details unavailable)';
+            }
         } else {
             $message = __('Cloudflare credentials not configured. Add constants to wp-config.php or configure via admin settings.', 'holler-cache-control');
         }
         
-        return array(
+        $status_info = array(
             'enabled' => true,
             'configured' => $is_configured,
             'status' => $is_configured ? 'active' : 'not_configured',
@@ -68,6 +102,12 @@ class Cloudflare {
             'credential_sources' => $credentials['sources'] ?? array(),
             'all_from_config' => $credentials['all_from_config'] ?? false
         );
+        
+        if (!empty($details)) {
+            $status_info['details'] = $details;
+        }
+        
+        return $status_info;
     }
 
     /**
@@ -247,6 +287,89 @@ class Cloudflare {
             );
         } catch (\Exception $e) {
             error_log('Holler Cache Control - Cloudflare cache purge error: ' . $e->getMessage());
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Purge specific URLs from Cloudflare cache
+     *
+     * @param array $urls URLs to purge
+     * @return array Purge result
+     */
+    public static function purge_urls($urls) {
+        try {
+            $credentials = self::get_credentials();
+            
+            if (empty($credentials['email']) || empty($credentials['api_key']) || empty($credentials['zone_id'])) {
+                return array(
+                    'success' => false,
+                    'message' => __('Cloudflare credentials not configured.', 'holler-cache-control')
+                );
+            }
+
+            if (empty($urls) || !is_array($urls)) {
+                return array(
+                    'success' => false,
+                    'message' => __('No URLs provided for purging.', 'holler-cache-control')
+                );
+            }
+
+            // Cloudflare allows up to 30 URLs per request
+            $url_chunks = array_chunk($urls, 30);
+            $results = [];
+            $total_purged = 0;
+
+            $api = new CloudflareAPI(
+                $credentials['email'],
+                $credentials['api_key'],
+                $credentials['zone_id']
+            );
+
+            foreach ($url_chunks as $chunk) {
+                $response = wp_remote_post($api->get_api_endpoint() . '/zones/' . $credentials['zone_id'] . '/purge_cache', array(
+                    'headers' => $api->get_headers(),
+                    'body' => json_encode(array('files' => $chunk))
+                ));
+
+                if (is_wp_error($response)) {
+                    error_log('Holler Cache Control - Cloudflare URL purge error: ' . $response->get_error_message());
+                    continue;
+                }
+
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (!$body || !isset($body['success'])) {
+                    error_log('Holler Cache Control - Invalid Cloudflare response for URL purge');
+                    continue;
+                }
+
+                if ($body['success']) {
+                    $total_purged += count($chunk);
+                    $results[] = sprintf(__('Purged %d URLs successfully.', 'holler-cache-control'), count($chunk));
+                } else {
+                    $message = isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error.', 'holler-cache-control');
+                    error_log('Holler Cache Control - Cloudflare URL purge failed: ' . $message);
+                }
+            }
+
+            if ($total_purged > 0) {
+                return array(
+                    'success' => true,
+                    'message' => sprintf(__('Cloudflare cache purged for %d URLs.', 'holler-cache-control'), $total_purged),
+                    'urls_purged' => $total_purged
+                );
+            } else {
+                return array(
+                    'success' => false,
+                    'message' => __('Failed to purge any URLs from Cloudflare cache.', 'holler-cache-control')
+                );
+            }
+
+        } catch (\Exception $e) {
+            error_log('Holler Cache Control - Cloudflare URL purge error: ' . $e->getMessage());
             return array(
                 'success' => false,
                 'message' => $e->getMessage()
