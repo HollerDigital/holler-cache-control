@@ -82,7 +82,11 @@ class AjaxHandler {
             if ($result['success']) {
                 wp_send_json_success($result);
             } else {
-                wp_send_json_error($result);
+                wp_send_json_error(array(
+                    'message' => $result['message'] ?? 'Cache purge failed',
+                    'error_code' => $result['error_code'] ?? null,
+                    'debug_info' => $result['debug_info'] ?? null
+                ));
             }
         } catch (\Exception $e) {
             wp_send_json_error(array(
