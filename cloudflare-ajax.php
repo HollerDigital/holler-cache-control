@@ -329,6 +329,7 @@ function get_cloudflare_zone_settings() {
         return false;
     }
     
+    
     // Parse settings into a more usable format
     $settings = array();
     

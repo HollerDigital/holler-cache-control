@@ -926,30 +926,15 @@ class Tools {
      * Handle dashboard form submissions
      */
     public function handle_dashboard_form_submission() {
-    // Simple debug to track if this method is called
-    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - handle_dashboard_form_submission() called' . "\n", FILE_APPEND);
-    
-    // Debug: Log all form submissions
-    if (!empty($_POST)) {
-        error_log('Holler Cache Control: Form submission detected - POST data: ' . print_r($_POST, true));
-        // Also write to a temporary file for easier debugging
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Form submission: ' . print_r($_POST, true) . "\n", FILE_APPEND);
-        
-        // Check specifically for our cache_action
-        if (isset($_POST['cache_action'])) {
-            file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Found cache_action: ' . $_POST['cache_action'] . "\n", FILE_APPEND);
-        }
-    }
-        
-        // Check if this is a dashboard form submission
-        if (!isset($_POST['cache_action']) || !isset($_POST['holler_nonce'])) {
-            if (!empty($_POST)) {
-                error_log('Holler Cache Control: Form submission missing cache_action or holler_nonce');
-            }
+        // Skip AJAX requests - they have their own handlers
+        if (wp_doing_ajax()) {
             return;
         }
         
-        error_log('Holler Cache Control: Dashboard form submission detected with action: ' . $_POST['cache_action']);
+        // Check if this is a dashboard form submission
+        if (!isset($_POST['cache_action']) || !isset($_POST['holler_nonce'])) {
+            return;
+        }
 
         // Verify nonce
         if (!wp_verify_nonce($_POST['holler_nonce'], 'holler_cache_action')) {
