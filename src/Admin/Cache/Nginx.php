@@ -168,15 +168,33 @@ class Nginx {
             // Authenticate if password is provided
             if (!empty($redis_settings['password'])) {
                 try {
-                    $auth_result = $redis->auth($redis_settings['password']);
+                    $auth_result = false;
+                    
+                    // GridPane uses username-password authentication
+                    if (!empty($redis_settings['username'])) {
+                        error_log('Holler Cache Control: Attempting Redis auth with username: ' . $redis_settings['username']);
+                        // Redis 6.0+ ACL authentication with username and password
+                        $auth_result = $redis->auth([$redis_settings['username'], $redis_settings['password']]);
+                    } else {
+                        error_log('Holler Cache Control: Attempting Redis auth with password only');
+                        // Traditional password-only authentication
+                        $auth_result = $redis->auth($redis_settings['password']);
+                    }
+                    
                     if (!$auth_result) {
                         $details['Connection'] = '❌ Authentication failed';
+                        $details['Auth Method'] = !empty($redis_settings['username']) ? 'Username + Password' : 'Password only';
                         $redis->close();
                         return $details;
                     }
+                    
+                    error_log('Holler Cache Control: Redis authentication successful');
+                    
                 } catch (\Exception $e) {
                     error_log('Holler Cache Control: Redis auth failed: ' . $e->getMessage());
                     $details['Connection'] = '❌ Auth error: ' . $e->getMessage();
+                    $details['Auth Method'] = !empty($redis_settings['username']) ? 'Username + Password' : 'Password only';
+                    $details['Username'] = $redis_settings['username'] ?? 'Not provided';
                     $redis->close();
                     return $details;
                 }
