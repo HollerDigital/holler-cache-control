@@ -365,7 +365,7 @@ class Nginx {
 
                 try {
                     // Clear cache files
-                    $result = shell_exec('rm -rf ' . escapeshellarg($path . '/*') . ' 2>&1');
+                    $result = \shell_exec('rm -rf ' . escapeshellarg($path . '/*') . ' 2>&1');
                     
                     if ($result === null || strpos($result, 'Permission denied') !== false) {
                         $failed_paths[] = array(
@@ -626,11 +626,11 @@ class Nginx {
                 }
 
                 // Get cache size
-                $size_output = shell_exec("du -sh " . escapeshellarg($cache_path) . " 2>/dev/null");
+                $size_output = \shell_exec("du -sh " . escapeshellarg($cache_path) . " 2>/dev/null");
                 $size = trim(explode("\t", $size_output)[0]);
 
                 // Get number of files
-                $files_output = shell_exec("find " . escapeshellarg($cache_path) . " -type f | wc -l");
+                $files_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f | wc -l");
                 $files = (int)trim($files_output);
 
                 // Get cache stats from nginx status

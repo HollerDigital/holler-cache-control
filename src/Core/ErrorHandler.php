@@ -149,12 +149,12 @@ class ErrorHandler {
                     
                     if ($validation['readable']) {
                         // Get cache statistics
-                        $size_output = shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null");
+                        $size_output = \shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null");
                         if ($size_output) {
                             $validation['size'] = (int) explode("\t", $size_output)[0];
                         }
                         
-                        $files_output = shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
+                        $files_output = \shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
                         if ($files_output) {
                             $validation['files'] = (int) trim($files_output);
                         }

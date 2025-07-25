@@ -28,7 +28,7 @@ class Cache_Commands {
     private function run_gp_command($command) {
         $output = array();
         $return_var = 0;
-        exec("gp $command 2>&1", $output, $return_var);
+        \exec("gp $command 2>&1", $output, $return_var);
         
         return array(
             'success' => $return_var === 0,
