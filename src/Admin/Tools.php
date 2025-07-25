@@ -1055,7 +1055,7 @@ class Tools {
         $return_var = 0;
         
         // Execute command and capture output
-        exec($command . ' 2>&1', $output, $return_var);
+        \exec($command . ' 2>&1', $output, $return_var);
         
         // Log the result
         if ($return_var === 0) {
