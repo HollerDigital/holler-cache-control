@@ -1038,7 +1038,7 @@ class Tools {
     }
 
     /**
-     * Handle GridPane permissions fix
+     * Handle GridPane permissions fix with multiple execution methods
      */
     private function handle_fix_permissions() {
         $site_url = home_url();
@@ -1047,29 +1047,146 @@ class Tools {
         // Log the action
         error_log('Holler Cache Control: Running GridPane permissions fix for: ' . $domain);
         
-        // Execute the GridPane CLI command
+        // Build the GridPane CLI command
         $command = sprintf('gp fix perms %s', escapeshellarg($domain));
         
-        // Try to execute the command
-        $output = array();
-        $return_var = 0;
-        
-        // Execute command and capture output
-        \exec($command . ' 2>&1', $output, $return_var);
+        // Try multiple execution methods based on what's available
+        $result = $this->execute_system_command($command);
         
         // Log the result
-        if ($return_var === 0) {
+        if ($result['success']) {
             error_log('Holler Cache Control: GridPane permissions fix completed successfully');
-            error_log('Holler Cache Control: Command output: ' . implode('\n', $output));
+            error_log('Holler Cache Control: Method used: ' . $result['method']);
+            error_log('Holler Cache Control: Command output: ' . implode('\n', $result['output']));
         } else {
-            error_log('Holler Cache Control: GridPane permissions fix failed with return code: ' . $return_var);
-            error_log('Holler Cache Control: Command output: ' . implode('\n', $output));
+            error_log('Holler Cache Control: GridPane permissions fix failed');
+            error_log('Holler Cache Control: Error: ' . $result['error']);
+            if (!empty($result['output'])) {
+                error_log('Holler Cache Control: Command output: ' . implode('\n', $result['output']));
+            }
         }
         
+        return $result;
+    }
+    
+    /**
+     * Execute system command with multiple fallback methods
+     * 
+     * @param string $command Command to execute
+     * @return array Result with success, output, method used, and error info
+     */
+    private function execute_system_command($command) {
+        $output = array();
+        $return_var = 0;
+        $method_used = '';
+        $error_message = '';
+        
+        // Method 1: Try exec() if available
+        if (function_exists('exec')) {
+            try {
+                \exec($command . ' 2>&1', $output, $return_var);
+                $method_used = 'exec';
+                
+                return array(
+                    'success' => ($return_var === 0),
+                    'output' => $output,
+                    'return_code' => $return_var,
+                    'method' => $method_used,
+                    'error' => $return_var !== 0 ? 'Command failed with return code: ' . $return_var : null
+                );
+            } catch (\Exception $e) {
+                $error_message .= 'exec() failed: ' . $e->getMessage() . '; ';
+            }
+        } else {
+            $error_message .= 'exec() function disabled; ';
+        }
+        
+        // Method 2: Try shell_exec() if available
+        if (function_exists('shell_exec')) {
+            try {
+                $shell_output = \shell_exec($command . ' 2>&1');
+                if ($shell_output !== null) {
+                    $output = $shell_output ? explode("\n", trim($shell_output)) : array();
+                    $method_used = 'shell_exec';
+                    
+                    return array(
+                        'success' => true,
+                        'output' => $output,
+                        'return_code' => 0, // shell_exec doesn't provide return code
+                        'method' => $method_used,
+                        'error' => null
+                    );
+                }
+                $error_message .= 'shell_exec() returned null; ';
+            } catch (\Exception $e) {
+                $error_message .= 'shell_exec() failed: ' . $e->getMessage() . '; ';
+            }
+        } else {
+            $error_message .= 'shell_exec() function disabled; ';
+        }
+        
+        // Method 3: Try system() if available
+        if (function_exists('system')) {
+            try {
+                ob_start();
+                $last_line = \system($command . ' 2>&1', $return_var);
+                $system_output = ob_get_clean();
+                
+                $output = $system_output ? explode("\n", trim($system_output)) : array();
+                if ($last_line) {
+                    $output[] = $last_line;
+                }
+                $method_used = 'system';
+                
+                return array(
+                    'success' => ($return_var === 0),
+                    'output' => $output,
+                    'return_code' => $return_var,
+                    'method' => $method_used,
+                    'error' => $return_var !== 0 ? 'Command failed with return code: ' . $return_var : null
+                );
+            } catch (\Exception $e) {
+                $error_message .= 'system() failed: ' . $e->getMessage() . '; ';
+            }
+        } else {
+            $error_message .= 'system() function disabled; ';
+        }
+        
+        // Method 4: Try passthru() if available
+        if (function_exists('passthru')) {
+            try {
+                ob_start();
+                \passthru($command . ' 2>&1', $return_var);
+                $passthru_output = ob_get_clean();
+                
+                $output = $passthru_output ? explode("\n", trim($passthru_output)) : array();
+                $method_used = 'passthru';
+                
+                return array(
+                    'success' => ($return_var === 0),
+                    'output' => $output,
+                    'return_code' => $return_var,
+                    'method' => $method_used,
+                    'error' => $return_var !== 0 ? 'Command failed with return code: ' . $return_var : null
+                );
+            } catch (\Exception $e) {
+                $error_message .= 'passthru() failed: ' . $e->getMessage() . '; ';
+            }
+        } else {
+            $error_message .= 'passthru() function disabled; ';
+        }
+        
+        // If all methods failed
+        $disabled_functions = ini_get('disable_functions');
+        $error_message .= 'All system execution functions unavailable. ';
+        $error_message .= 'Disabled functions: ' . ($disabled_functions ?: 'none listed');
+        
         return array(
-            'success' => ($return_var === 0),
-            'output' => $output,
-            'return_code' => $return_var
+            'success' => false,
+            'output' => array('Error: Unable to execute system commands on this server'),
+            'return_code' => -1,
+            'method' => 'none_available',
+            'error' => $error_message
         );
     }
 
