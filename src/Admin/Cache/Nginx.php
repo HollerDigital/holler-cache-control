@@ -35,27 +35,64 @@ class Nginx {
             );
             $details = array();
 
+            // Get GridPane cache method
             $cache_method = get_nginx_cache_method();
             
+            // Debug logging for cache detection
+            error_log('Holler Cache Control: Detected cache method: ' . $cache_method);
+            error_log('Holler Cache Control: RT_WP_NGINX_HELPER_CACHE_METHOD constant: ' . (defined('RT_WP_NGINX_HELPER_CACHE_METHOD') ? RT_WP_NGINX_HELPER_CACHE_METHOD : 'not defined'));
+            
+            // Check for Redis Page Caching (GridPane method)
             if ($cache_method === 'enable_redis') {
                 $redis_settings = get_redis_settings();
+                error_log('Holler Cache Control: Redis settings - hostname: ' . $redis_settings['hostname'] . ', port: ' . $redis_settings['port']);
+                
                 if (!empty($redis_settings['hostname']) && !empty($redis_settings['port'])) {
                     $status['status'] = 'active';
-                    $status['message'] = __('Nginx Redis Page Caching is enabled and configured.', 'holler-cache-control');
+                    $status['message'] = __('🚀 GridPane Redis Page Caching is enabled and configured.', 'holler-cache-control');
                     $status['type'] = 'redis';
                     
                     // Get Redis page cache statistics
                     $details = self::get_redis_page_cache_stats($redis_settings);
+                } else {
+                    $status['message'] = __('⚠️ GridPane Redis Page Caching is enabled but not fully configured (missing hostname/port).', 'holler-cache-control');
                 }
-            } elseif ($cache_method === 'enable_fastcgi') {
-                if (defined('RT_WP_NGINX_HELPER_CACHE_PATH') && is_dir(RT_WP_NGINX_HELPER_CACHE_PATH)) {
-                    $status['status'] = 'active';
-                    $status['message'] = __('Nginx FastCGI Page Caching is enabled and configured.', 'holler-cache-control');
-                    $status['type'] = 'fastcgi';
-                    
-                    // Get FastCGI cache statistics
-                    $details = self::get_fastcgi_cache_stats();
+            } 
+            // Check for FastCGI Page Caching (GridPane method)
+            elseif ($cache_method === 'enable_fastcgi') {
+                $status['status'] = 'active';
+                $status['message'] = __('🚀 GridPane Nginx FastCGI Page Caching is enabled.', 'holler-cache-control');
+                $status['type'] = 'fastcgi';
+                
+                // Get FastCGI cache statistics
+                $details = self::get_fastcgi_cache_stats();
+                
+                // Add cache path info if available
+                if (defined('RT_WP_NGINX_HELPER_CACHE_PATH')) {
+                    $details['Cache Path'] = RT_WP_NGINX_HELPER_CACHE_PATH;
+                    if (!is_dir(RT_WP_NGINX_HELPER_CACHE_PATH)) {
+                        $details['Cache Path Status'] = '⚠️ Directory not found';
+                    } elseif (!is_writable(RT_WP_NGINX_HELPER_CACHE_PATH)) {
+                        $details['Cache Path Status'] = '⚠️ Not writable';
+                    } else {
+                        $details['Cache Path Status'] = '✅ Ready';
+                    }
                 }
+            }
+            // Handle unknown or disabled cache methods
+            else {
+                if ($cache_method === 'disable_redis') {
+                    $status['message'] = __('❌ GridPane Page Caching is disabled.', 'holler-cache-control');
+                } else {
+                    $status['message'] = sprintf(
+                        __('❓ Unknown cache method detected: %s', 'holler-cache-control'),
+                        $cache_method
+                    );
+                }
+                
+                // Add diagnostic information
+                $details['Detected Method'] = $cache_method;
+                $details['RT_WP_NGINX_HELPER_CACHE_METHOD'] = defined('RT_WP_NGINX_HELPER_CACHE_METHOD') ? RT_WP_NGINX_HELPER_CACHE_METHOD : 'Not defined';
             }
             
             // Add details if we have them
@@ -155,32 +192,208 @@ class Nginx {
      * Get FastCGI cache statistics
      */
     private static function get_fastcgi_cache_stats() {
-        $details = array();
+        $details = array(
+            'Cache Type' => 'FastCGI',
+            'Method' => 'GridPane Nginx FastCGI'
+        );
         
-        if (defined('RT_WP_NGINX_HELPER_CACHE_PATH') && is_dir(RT_WP_NGINX_HELPER_CACHE_PATH)) {
+        // Try to find cache path
+        $cache_path = null;
+        
+        // First check for GridPane constant
+        if (defined('RT_WP_NGINX_HELPER_CACHE_PATH')) {
             $cache_path = RT_WP_NGINX_HELPER_CACHE_PATH;
-            
-            // Get cache directory size and file count
-            $cache_size = self::get_directory_size($cache_path);
-            $file_count = self::count_cache_files($cache_path);
-            
-            $details = array(
-                'Cache Type' => 'FastCGI',
-                'Cache Path' => $cache_path,
-                'Cache Size' => self::format_bytes($cache_size),
-                'Cache Files' => number_format($file_count),
-                'Status' => is_writable($cache_path) ? 'Writable' : 'Read-only'
+            $details['Path Source'] = 'GridPane constant';
+        } else {
+            // Fallback: Try common GridPane cache paths
+            $common_paths = array(
+                '/var/run/nginx-cache',
+                '/var/cache/nginx',
+                '/var/www/cache/nginx',
+                '/tmp/nginx/cache'
             );
             
-            // Add cache age information
-            $oldest_file = self::get_oldest_cache_file($cache_path);
-            if ($oldest_file) {
-                $age = time() - filemtime($oldest_file);
-                $details['Oldest Cache'] = self::format_uptime($age) . ' ago';
+            foreach ($common_paths as $path) {
+                if (is_dir($path)) {
+                    $cache_path = $path;
+                    $details['Path Source'] = 'Auto-detected';
+                    break;
+                }
+            }
+        }
+        
+        if ($cache_path && is_dir($cache_path)) {
+            $details['Cache Path'] = $cache_path;
+            
+            try {
+                // Get cache directory size and file count using shell commands for better performance
+                $size_output = \shell_exec("du -sh " . escapeshellarg($cache_path) . " 2>/dev/null");
+                if ($size_output) {
+                    $size = trim(explode("\t", $size_output)[0]);
+                    $details['Cache Size'] = $size;
+                }
+                
+                $files_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f | wc -l");
+                if ($files_output) {
+                    $file_count = (int)trim($files_output);
+                    $details['Cache Files'] = number_format($file_count);
+                }
+                
+                // Check permissions
+                $details['Status'] = is_writable($cache_path) ? '✅ Writable' : '⚠️ Read-only';
+                
+                // Add cache age information
+                $oldest_file_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | head -1");
+                if ($oldest_file_output) {
+                    $parts = explode(' ', trim($oldest_file_output), 2);
+                    if (count($parts) >= 2) {
+                        $oldest_time = (float)$parts[0];
+                        $age = time() - $oldest_time;
+                        if ($age > 0) {
+                            $details['Oldest Cache'] = self::format_time_ago($age);
+                        }
+                    }
+                }
+                
+            } catch (\Exception $e) {
+                $details['Error'] = 'Could not read cache statistics';
+                error_log('Holler Cache Control: Error getting FastCGI cache stats: ' . $e->getMessage());
+            }
+        } else {
+            $details['Status'] = '❌ Cache directory not found';
+            $details['Note'] = 'FastCGI caching may still be active via nginx configuration';
+            
+            // Add diagnostic info
+            if (defined('RT_WP_NGINX_HELPER_CACHE_PATH')) {
+                $details['Configured Path'] = RT_WP_NGINX_HELPER_CACHE_PATH . ' (not accessible)';
+            } else {
+                $details['Configuration'] = 'RT_WP_NGINX_HELPER_CACHE_PATH not defined';
             }
         }
         
         return $details;
+    }
+    
+    /**
+     * Format time ago in human readable format
+     */
+    private static function format_time_ago($seconds) {
+        if ($seconds < 60) {
+            return $seconds . ' seconds ago';
+        } elseif ($seconds < 3600) {
+            $minutes = floor($seconds / 60);
+            return $minutes . ' minute' . ($minutes != 1 ? 's' : '') . ' ago';
+        } elseif ($seconds < 86400) {
+            $hours = floor($seconds / 3600);
+            return $hours . ' hour' . ($hours != 1 ? 's' : '') . ' ago';
+        } else {
+            $days = floor($seconds / 86400);
+            return $days . ' day' . ($days != 1 ? 's' : '') . ' ago';
+        }
+    }
+    
+    /**
+     * Get comprehensive GridPane cache diagnostics
+     * Useful for debugging cache detection issues
+     */
+    public static function get_gridpane_diagnostics() {
+        $diagnostics = array(
+            'GridPane Constants' => array(),
+            'Cache Method Detection' => array(),
+            'Redis Settings' => array(),
+            'FastCGI Settings' => array(),
+            'Cache Paths' => array()
+        );
+        
+        // Check all GridPane constants
+        $gridpane_constants = array(
+            'RT_WP_NGINX_HELPER_CACHE_METHOD',
+            'RT_WP_NGINX_HELPER_PURGE_METHOD', 
+            'RT_WP_NGINX_HELPER_CACHE_PATH',
+            'RT_WP_NGINX_HELPER_REDIS_DATABASE',
+            'RT_WP_NGINX_HELPER_REDIS_HOSTNAME',
+            'RT_WP_NGINX_HELPER_REDIS_PORT',
+            'RT_WP_NGINX_HELPER_REDIS_USERNAME',
+            'RT_WP_NGINX_HELPER_REDIS_PASSWORD',
+            'RT_WP_NGINX_HELPER_REDIS_PREFIX'
+        );
+        
+        foreach ($gridpane_constants as $constant) {
+            $diagnostics['GridPane Constants'][$constant] = defined($constant) ? constant($constant) : 'Not defined';
+        }
+        
+        // Cache method detection
+        $cache_method = get_nginx_cache_method();
+        $diagnostics['Cache Method Detection']['Detected Method'] = $cache_method;
+        $diagnostics['Cache Method Detection']['Is FastCGI'] = ($cache_method === 'enable_fastcgi') ? 'Yes' : 'No';
+        $diagnostics['Cache Method Detection']['Is Redis'] = ($cache_method === 'enable_redis') ? 'Yes' : 'No';
+        $diagnostics['Cache Method Detection']['Is Disabled'] = ($cache_method === 'disable_redis') ? 'Yes' : 'No';
+        
+        // Redis settings
+        if ($cache_method === 'enable_redis') {
+            $redis_settings = get_redis_settings();
+            $diagnostics['Redis Settings'] = $redis_settings;
+            
+            // Test Redis connection
+            try {
+                $redis = new \Redis();
+                $connected = $redis->connect(
+                    $redis_settings['hostname'],
+                    (int) $redis_settings['port'],
+                    2 // 2 second timeout
+                );
+                
+                if ($connected && !empty($redis_settings['password'])) {
+                    $redis->auth($redis_settings['password']);
+                }
+                
+                if ($connected && !empty($redis_settings['database'])) {
+                    $redis->select((int) $redis_settings['database']);
+                }
+                
+                $diagnostics['Redis Settings']['Connection Test'] = $connected ? '✅ Success' : '❌ Failed';
+                
+                if ($connected) {
+                    $info = $redis->info();
+                    $diagnostics['Redis Settings']['Server Version'] = $info['redis_version'] ?? 'Unknown';
+                    $diagnostics['Redis Settings']['Memory Usage'] = $info['used_memory_human'] ?? 'Unknown';
+                    $redis->close();
+                }
+                
+            } catch (\Exception $e) {
+                $diagnostics['Redis Settings']['Connection Test'] = '❌ Error: ' . $e->getMessage();
+            }
+        }
+        
+        // FastCGI settings and paths
+        if ($cache_method === 'enable_fastcgi') {
+            $common_paths = array(
+                '/var/run/nginx-cache',
+                '/var/cache/nginx', 
+                '/var/www/cache/nginx',
+                '/tmp/nginx/cache'
+            );
+            
+            foreach ($common_paths as $path) {
+                $status = 'Not found';
+                if (is_dir($path)) {
+                    $status = is_writable($path) ? '✅ Exists & Writable' : '⚠️ Exists but Read-only';
+                }
+                $diagnostics['Cache Paths'][$path] = $status;
+            }
+            
+            if (defined('RT_WP_NGINX_HELPER_CACHE_PATH')) {
+                $configured_path = RT_WP_NGINX_HELPER_CACHE_PATH;
+                $status = 'Not found';
+                if (is_dir($configured_path)) {
+                    $status = is_writable($configured_path) ? '✅ Exists & Writable' : '⚠️ Exists but Read-only';
+                }
+                $diagnostics['FastCGI Settings']['Configured Cache Path'] = $configured_path;
+                $diagnostics['FastCGI Settings']['Path Status'] = $status;
+            }
+        }
+        
+        return $diagnostics;
     }
     
     /**
