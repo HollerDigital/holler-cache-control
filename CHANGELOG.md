@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-01-25
+
+### Added
+- **🛠️ Robust System Command Execution**: Multi-method fallback system for server compatibility
+  - **4 Execution Methods**: Automatic fallback through `exec()`, `shell_exec()`, `system()`, and `passthru()`
+  - **Server Compatibility**: Works across different PHP configurations and security restrictions
+  - **Detailed Diagnostics**: Reports which execution method succeeded and why others failed
+  - **GridPane CLI Integration**: Reliable `gp fix perms` command execution for permissions repair
+- **🔐 Enhanced GridPane Redis Authentication**: Full support for Redis 6.0+ ACL authentication
+  - **Username + Password**: Proper authentication with GridPane's Redis ACL setup
+  - **Fallback Support**: Maintains compatibility with password-only authentication
+  - **Connection Diagnostics**: Enhanced logging and error reporting for Redis connection issues
+  - **Timeout Handling**: 2-second connection timeout with proper error handling
+- **📊 Comprehensive Cache Detection**: Enhanced GridPane cache method detection and diagnostics
+  - **Dual Method Support**: Detects both Nginx FastCGI and Redis page caching methods
+  - **Fallback Path Detection**: Smart cache path discovery when constants are not defined
+  - **Detailed Status Messages**: Clear, emoji-enhanced status reporting with GridPane-specific feedback
+  - **Advanced Diagnostics**: New `get_gridpane_diagnostics()` function for troubleshooting
+
+### Fixed
+- **🔥 Critical Production Bugs**: Resolved fatal errors affecting live site functionality
+  - **Namespace Issues**: Fixed `Call to undefined function exec()` errors with proper global namespace usage
+  - **AJAX Error Handling**: Resolved "Cache purge failed: Object" display issues with structured error responses
+  - **Redis Authentication**: Fixed "WRONGPASS invalid username-password pair" errors with proper ACL authentication
+- **🎯 User Experience Improvements**: Enhanced error messages and feedback systems
+  - **Clear Error Messages**: Replaced confusing "Object" errors with meaningful, actionable messages
+  - **Detailed Logging**: Enhanced error logging with context and debugging information
+  - **Graceful Degradation**: Better handling of server restrictions and missing functions
+
+### Changed
+- **🚀 Production Stability**: Significantly improved reliability across different hosting environments
+  - **Server Agnostic**: Plugin now works reliably regardless of PHP security restrictions
+  - **Error Resilience**: Robust error handling prevents fatal errors from breaking site functionality
+  - **GridPane Optimized**: Enhanced compatibility with GridPane hosting environment specifics
+- **🔧 Developer Experience**: Improved debugging and troubleshooting capabilities
+  - **Enhanced Logging**: Detailed error logs with execution method reporting
+  - **Diagnostic Tools**: Comprehensive cache detection and connection testing
+  - **Status Cache Management**: Added ability to clear status cache for fresh detection
+
+### Technical Details
+- **New Methods**: `execute_system_command()` - Multi-method system execution with fallbacks
+- **Enhanced Classes**: Improved Redis connection handling in Nginx cache class
+- **Error Handling**: Structured AJAX error responses with proper message extraction
+- **Authentication**: Redis ACL support with `redis->auth(['username', 'password'])` format
+- **Diagnostics**: Comprehensive GridPane environment detection and reporting
+- **Compatibility**: Works across PHP 7.4+ with various security configurations
+
+### Security
+- **🛡️ Proper Namespace Usage**: All global PHP functions now use correct namespace prefixes
+- **🔐 Secure Authentication**: Enhanced Redis authentication with proper credential handling
+- **✅ Input Validation**: Improved command sanitization and error boundary handling
+
 ## [1.5.0] - 2025-01-25
 
 ### Added

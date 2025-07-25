@@ -1,23 +1,38 @@
 # Holler Cache Control
 
-A comprehensive cache management solution for WordPress, integrating Redis Object Cache, Nginx Page Cache, and Cloudflare with an easy-to-use interface.
+A comprehensive cache management solution for WordPress, integrating Redis Object Cache, Nginx Page Cache, and Cloudflare with an easy-to-use interface. **Version 1.6.0** brings enhanced reliability, robust server compatibility, and improved GridPane integration.
 
 ## Features
 
-- Redis Object Cache integration and management
-- Nginx Page Cache integration
-- Cloudflare cache management with APO support
-- Admin bar quick actions for cache purging (frontend & admin)
-- Flexible credential management (config file or UI-based)
-- Cache status overview with detailed metrics
-- One-click cache purging
-- WP-CLI commands for automation
-- Slack integration for remote cache management
-- Granular visibility controls for plugins and features
-- **NEW:** Perfmatters compatibility diagnostics and troubleshooting
-- **NEW:** Frontend admin bar functionality with performance plugin support
-- **NEW:** Intelligent plugin conflict detection and resolution guidance
-- **NEW:** Automatic GitHub-based plugin updates with one-click installation
+### Core Cache Management
+- **Redis Object Cache** integration and management with ACL authentication support
+- **Nginx Page Cache** integration with FastCGI and Redis page caching detection
+- **Cloudflare cache management** with APO support and comprehensive settings controls
+- **Admin bar quick actions** for cache purging (frontend & admin)
+- **One-click cache purging** with detailed success/error feedback
+
+### GridPane Optimization
+- **🚀 NEW in v1.6.0:** Enhanced GridPane Redis authentication with username+password support
+- **🛠️ NEW in v1.6.0:** Robust system command execution with 4 fallback methods (`exec`, `shell_exec`, `system`, `passthru`)
+- **📊 NEW in v1.6.0:** Comprehensive cache detection for both FastCGI and Redis page caching methods
+- **🔧 NEW in v1.6.0:** GridPane CLI integration with reliable `gp fix perms` command execution
+
+### Advanced Features
+- **Flexible credential management** (wp-config.php constants or UI-based)
+- **Cache status overview** with detailed metrics and diagnostics
+- **WP-CLI commands** for automation and scripting
+- **Slack integration** for remote cache management
+- **Granular visibility controls** for plugins and features
+- **Perfmatters compatibility** diagnostics and troubleshooting
+- **Frontend admin bar functionality** with performance plugin support
+- **Intelligent plugin conflict detection** and resolution guidance
+- **Automatic GitHub-based plugin updates** with one-click installation
+
+### Reliability & Compatibility
+- **🔥 NEW in v1.6.0:** Production-ready stability with enhanced error handling
+- **🌐 NEW in v1.6.0:** Server-agnostic design works across different PHP configurations
+- **🛡️ NEW in v1.6.0:** Proper namespace usage prevents fatal errors on restricted servers
+- **📱 NEW in v1.6.0:** Clear, actionable error messages replace confusing technical errors
 
 ## Installation
 
