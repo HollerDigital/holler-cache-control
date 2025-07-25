@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2025-07-25
+
+### Fixed
+- **🚨 Critical PHP Syntax Error**: Resolved fatal syntax error in Tools.php that was breaking site functionality
+  - **Function Declaration**: Restored missing `handle_dashboard_form_submission()` function declaration
+  - **Class Structure**: Fixed PHP class structure after debug code cleanup
+  - **Site Stability**: Eliminated "unexpected token 'if', expecting 'function'" errors
+- **🧹 Production Code Cleanup**: Removed all debug logging for clean production deployment
+  - **Cloudflare API**: Cleaned verbose logging from `cloudflare-ajax.php`
+  - **Form Handlers**: Removed debug output from `Tools.php` while maintaining functionality
+  - **Log Noise**: Eliminated development debugging that was cluttering production logs
+
+### Improved
+- **⚡ AJAX Handling**: Enhanced form submission handler to prevent AJAX interference
+  - **wp_doing_ajax() Check**: Proper detection and handling of AJAX vs form requests
+  - **Clean Separation**: AJAX calls no longer interfere with form submission logic
+  - **Better Performance**: Reduced unnecessary processing for AJAX requests
+
+### Technical Details
+- **Code Quality**: All PHP syntax validated and production-ready
+- **Error Handling**: Maintained robust error handling without verbose debug output
+- **Performance**: Streamlined code execution with removed debugging overhead
+- **Stability**: Critical syntax issues resolved for reliable site operation
+
 ## [1.6.0] - 2025-01-25
 
 ### Added
