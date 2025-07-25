@@ -103,10 +103,23 @@ class Nginx {
             return $status;
         } catch (\Exception $e) {
             error_log('Holler Cache Control - Failed to get Nginx status: ' . $e->getMessage());
+            error_log('Holler Cache Control - Exception details: ' . $e->getTraceAsString());
+            
+            // Provide more detailed error information
+            $error_details = array(
+                'Exception' => $e->getMessage(),
+                'Cache Method' => get_nginx_cache_method(),
+                'RT_WP_NGINX_HELPER_CACHE_METHOD' => defined('RT_WP_NGINX_HELPER_CACHE_METHOD') ? RT_WP_NGINX_HELPER_CACHE_METHOD : 'Not defined'
+            );
+            
             return array(
                 'status' => 'error',
-                'message' => __('Failed to get Nginx cache status.', 'holler-cache-control'),
-                'type' => null
+                'message' => sprintf(
+                    __('Failed to get Nginx cache status: %s', 'holler-cache-control'),
+                    $e->getMessage()
+                ),
+                'type' => null,
+                'details' => $error_details
             );
         }
     }
@@ -115,11 +128,73 @@ class Nginx {
      * Get Redis page cache statistics
      */
     private static function get_redis_page_cache_stats($redis_settings) {
-        $details = array();
+        $details = array(
+            'Cache Type' => 'Redis Page Cache',
+            'Method' => 'GridPane Redis'
+        );
         
         try {
+            if (!class_exists('Redis')) {
+                $details['Error'] = 'Redis PHP extension not available';
+                return $details;
+            }
+            
             $redis = new \Redis();
-            $connected = $redis->connect($redis_settings['hostname'], $redis_settings['port']);
+            
+            // Enhanced connection logic with timeout and error handling
+            $connected = false;
+            $connection_timeout = 2; // 2 seconds
+            
+            error_log('Holler Cache Control: Attempting Redis connection to ' . $redis_settings['hostname'] . ':' . $redis_settings['port']);
+            
+            try {
+                $connected = $redis->connect(
+                    $redis_settings['hostname'], 
+                    (int) $redis_settings['port'],
+                    $connection_timeout
+                );
+            } catch (\Exception $e) {
+                error_log('Holler Cache Control: Redis connection failed: ' . $e->getMessage());
+                $details['Connection'] = '❌ Failed: ' . $e->getMessage();
+                return $details;
+            }
+            
+            if (!$connected) {
+                $details['Connection'] = '❌ Failed to connect to Redis server';
+                $details['Settings'] = $redis_settings['hostname'] . ':' . $redis_settings['port'];
+                return $details;
+            }
+            
+            // Authenticate if password is provided
+            if (!empty($redis_settings['password'])) {
+                try {
+                    $auth_result = $redis->auth($redis_settings['password']);
+                    if (!$auth_result) {
+                        $details['Connection'] = '❌ Authentication failed';
+                        $redis->close();
+                        return $details;
+                    }
+                } catch (\Exception $e) {
+                    error_log('Holler Cache Control: Redis auth failed: ' . $e->getMessage());
+                    $details['Connection'] = '❌ Auth error: ' . $e->getMessage();
+                    $redis->close();
+                    return $details;
+                }
+            }
+            
+            // Select database if specified
+            if (!empty($redis_settings['database'])) {
+                try {
+                    $redis->select((int) $redis_settings['database']);
+                } catch (\Exception $e) {
+                    error_log('Holler Cache Control: Redis database selection failed: ' . $e->getMessage());
+                    $details['Connection'] = '❌ Database selection failed: ' . $e->getMessage();
+                    $redis->close();
+                    return $details;
+                }
+            }
+            
+            $details['Connection'] = '✅ Connected successfully';
             
             if ($connected) {
                 $info = $redis->info();
@@ -290,6 +365,15 @@ class Nginx {
             $days = floor($seconds / 86400);
             return $days . ' day' . ($days != 1 ? 's' : '') . ' ago';
         }
+    }
+    
+    /**
+     * Clear status cache to force fresh detection
+     * Useful when configuration changes or for debugging
+     */
+    public static function clear_status_cache() {
+        StatusCache::clear_cache('nginx');
+        error_log('Holler Cache Control: Nginx status cache cleared');
     }
     
     /**
