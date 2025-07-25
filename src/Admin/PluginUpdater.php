@@ -86,9 +86,9 @@ class Holler_Cache_Control_Plugin_Updater {
         
         // Define plugin icons
         $info->icons = array(
-            '1x'      => plugins_url('assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE),
-            '2x'      => plugins_url('assets/img/icon-256x256.png', HOLLER_CACHE_CONTROL_FILE),
-            'default' => plugins_url('assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE),
+            '1x'      => plugins_url( 'assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE ),
+            '2x'      => plugins_url( 'assets/img/icon-256x256.png', HOLLER_CACHE_CONTROL_FILE ),
+            'default' => plugins_url( 'assets/img/icon-128x128.png', HOLLER_CACHE_CONTROL_FILE ),
         );
         
         // Add banners for professional appearance
@@ -146,19 +146,28 @@ class Holler_Cache_Control_Plugin_Updater {
      * @return string HTML description content.
      */
     private function get_description_section() {
-        return '<p>Holler Cache Control is a comprehensive cache management plugin designed specifically for GridPane-hosted WordPress sites. It provides a unified interface to manage multiple cache layers including Nginx FastCGI cache, Redis Object cache, and Cloudflare cache.</p>
+        return '<p>Holler Cache Control is a comprehensive cache management plugin designed specifically for GridPane-hosted WordPress sites. <strong>Version 1.6.0</strong> brings enhanced reliability, robust server compatibility, and improved GridPane integration with production-ready stability.</p>
         
-        <h4>Key Features</h4>
+        <h4>🚀 New in v1.6.0 - Enhanced Reliability</h4>
+        <ul>
+            <li><strong>🛠️ Robust System Execution</strong> - 4 fallback methods ensure compatibility across all server configurations</li>
+            <li><strong>🔐 Enhanced Redis Authentication</strong> - Full support for GridPane Redis ACL with username+password</li>
+            <li><strong>📊 Comprehensive Cache Detection</strong> - Detects both FastCGI and Redis page caching methods</li>
+            <li><strong>🔥 Production Bug Fixes</strong> - Resolved critical namespace errors and AJAX display issues</li>
+            <li><strong>🌐 Server-Agnostic Design</strong> - Works reliably regardless of PHP security restrictions</li>
+        </ul>
+        
+        <h4>Core Features</h4>
         <ul>
             <li><strong>Unified Cache Management</strong> - Control all cache layers from a single interface</li>
-            <li><strong>One-Click Cache Purging</strong> - Clear all caches with a single button click</li>
+            <li><strong>One-Click Cache Purging</strong> - Clear all caches with detailed success/error feedback</li>
             <li><strong>Admin Bar Integration</strong> - Quick cache controls directly from the WordPress admin bar</li>
-            <li><strong>Cloudflare Integration</strong> - Full Cloudflare cache and APO management</li>
-            <li><strong>Development Mode Toggle</strong> - Easily enable/disable Cloudflare Development Mode</li>
-            <li><strong>Redis Cache Support</strong> - Complete Redis Object cache integration</li>
-            <li><strong>Nginx FastCGI Cache</strong> - Native support for Nginx page caching</li>
+            <li><strong>Cloudflare Integration</strong> - Full Cloudflare cache and APO management with settings controls</li>
+            <li><strong>GridPane CLI Integration</strong> - Reliable "gp fix perms" command execution</li>
+            <li><strong>Redis Cache Support</strong> - Complete Redis Object cache integration with ACL authentication</li>
+            <li><strong>Nginx FastCGI Cache</strong> - Native support for Nginx page caching with fallback detection</li>
             <li><strong>Automatic Cache Purging</strong> - Smart cache invalidation on content updates</li>
-            <li><strong>GridPane Optimized</strong> - Built specifically for GridPane hosting environment</li>
+            <li><strong>Enhanced Diagnostics</strong> - Comprehensive troubleshooting and status reporting</li>
         </ul>';
     }
     
@@ -207,25 +216,37 @@ define(\'CLOUDFLARE_ZONE_ID\', \'your-zone-id\');</code></pre>';
      * @return string HTML changelog content.
      */
     private function get_changelog_section() {
-        return '<h4>1.3.3 - 2025-01-24</h4>
+        return '<h4>1.6.0 - 2025-01-25</h4>
+        <ul>
+            <li><strong>🛠️ Added:</strong> Robust System Command Execution with 4 fallback methods (exec, shell_exec, system, passthru)</li>
+            <li><strong>🔐 Added:</strong> Enhanced GridPane Redis Authentication with ACL username+password support</li>
+            <li><strong>📊 Added:</strong> Comprehensive Cache Detection for both FastCGI and Redis page caching methods</li>
+            <li><strong>🔧 Added:</strong> GridPane CLI Integration with reliable "gp fix perms" command execution</li>
+            <li><strong>🔥 Fixed:</strong> Critical production bugs - exec() namespace errors, AJAX "Object" errors, Redis auth failures</li>
+            <li><strong>🚀 Enhanced:</strong> Production-ready stability with server-agnostic design across PHP configurations</li>
+            <li><strong>🛡️ Security:</strong> Proper namespace usage prevents fatal errors on restricted servers</li>
+            <li><strong>📱 UX:</strong> Clear, actionable error messages replace confusing technical errors</li>
+        </ul>
+        
+        <h4>1.5.0 - 2025-01-25</h4>
+        <ul>
+            <li><strong>Added:</strong> Comprehensive Cloudflare Settings Controls with real-time updates</li>
+            <li><strong>Added:</strong> Enhanced Cloudflare Diagnostics and standalone AJAX system</li>
+            <li><strong>Enhanced:</strong> Professional UI with toggle switches and responsive design</li>
+        </ul>
+        
+        <h4>1.4.0 - 2024-12-24</h4>
+        <ul>
+            <li><strong>Added:</strong> Asynchronous Cache Purging for AJAX requests</li>
+            <li><strong>Added:</strong> Enhanced Smart Detection for Elementor compatibility</li>
+            <li><strong>Added:</strong> WordPress Cron Integration for background operations</li>
+        </ul>
+        
+        <h4>1.3.3 - 2025-01-24</h4>
         <ul>
             <li><strong>Added:</strong> Cloudflare Development Mode Toggle with one-click enable/disable</li>
             <li><strong>Added:</strong> Real-time status display for development mode</li>
-            <li><strong>Added:</strong> Interactive toggle button with loading states and visual feedback</li>
             <li><strong>Enhanced:</strong> Cloudflare settings page with development mode status</li>
-        </ul>
-        
-        <h4>1.3.2 - 2025-01-24</h4>
-        <ul>
-            <li><strong>Fixed:</strong> Critical plugin-update-checker fatal error on fresh installs</li>
-            <li><strong>Enhanced:</strong> Error handling and logging for update checker</li>
-        </ul>
-        
-        <h4>1.3.1 - 2025-01-24</h4>
-        <ul>
-            <li><strong>Added:</strong> GitHub-based automatic plugin updates</li>
-            <li><strong>Added:</strong> Plugin update checker integration</li>
-            <li><strong>Enhanced:</strong> Documentation and changelog</li>
         </ul>';
     }
 }
