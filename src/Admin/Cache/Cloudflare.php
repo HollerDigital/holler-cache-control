@@ -589,21 +589,28 @@ class Cloudflare {
             // Get cache analytics if APO is enabled
             $cache_stats = array();
             if ($is_enabled) {
-                $analytics_response = wp_remote_get($api->get_api_endpoint() . '/zones/' . $credentials['zone_id'] . '/analytics/dashboard', array(
-                    'headers' => $api->get_headers(),
-                    'body' => array(
-                        'since' => '-1440', // Last 24 hours
-                        'continuous' => true
-                    )
+                // Use the correct analytics endpoint for APO stats
+                $query_params = array(
+                    'since' => '-1440',
+                    'continuous' => 'true'
+                );
+                $analytics_url = add_query_arg($query_params, $api->get_api_endpoint() . '/zones/' . $credentials['zone_id'] . '/analytics/latency');
+                $analytics_response = wp_remote_get($analytics_url, array(
+                    'headers' => $api->get_headers()
                 ));
 
                 if (!is_wp_error($analytics_response)) {
                     $analytics = json_decode(wp_remote_retrieve_body($analytics_response), true);
-                    if ($analytics && isset($analytics['result'])) {
+                    if ($analytics && isset($analytics['result']) && isset($analytics['result']['summary'])) {
+                        $summary = $analytics['result']['summary'];
+                        $total_requests = isset($summary['total']) ? $summary['total'] : 0;
+                        $cached_requests = isset($summary['cached']) ? $summary['cached'] : 0;
+                        
                         $cache_stats = array(
-                            'requests' => $analytics['result']['totals']['requests']['all'],
-                            'cached_requests' => $analytics['result']['totals']['requests']['cached'],
-                            'cache_hit_rate' => round(($analytics['result']['totals']['requests']['cached'] / $analytics['result']['totals']['requests']['all']) * 100, 2) . '%'
+                            'requests' => $total_requests,
+                            'cached_requests' => $cached_requests,
+                            'cache_hit_rate' => $total_requests > 0 ? 
+                                round(($cached_requests / $total_requests) * 100, 2) . '%' : '0%'
                         );
                     }
                 }

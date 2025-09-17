@@ -365,15 +365,15 @@ class Tools {
         // Get auto-purge settings with defaults
         $settings = wp_parse_args(get_option('holler_cache_control_auto_purge', array()), array(
             'purge_on_post_save' => true,
-            'purge_on_post_delete' => true,
-            'purge_on_post_trash' => true,
-            'purge_on_menu_update' => true,
-            'purge_on_widget_update' => true,
-            'purge_on_theme_switch' => true,
-            'purge_on_customizer_save' => true,
-            'purge_on_plugin_activation' => true,
-            'purge_on_core_update' => true,
-            'purge_daily_scheduled' => true
+            'purge_on_post_delete' => false,
+            'purge_on_post_trash' => false,
+            'purge_on_menu_update' => false,
+            'purge_on_widget_update' => false,
+            'purge_on_theme_switch' => false,
+            'purge_on_customizer_save' => false,
+            'purge_on_plugin_activation' => false,
+            'purge_on_core_update' => false,
+            'purge_daily_scheduled' => false
         ));
 
         // Post/Page updates - use smart detection to prevent editor conflicts
@@ -1787,22 +1787,26 @@ public function sanitize_auto_purge_settings($input) {
             error_log('Holler Cache Control - Error in sanitize_auto_purge_settings: ' . $e->getMessage());
             
             // Return safe defaults on error
-            return array(
+            $sanitized = array(
+                // Event-based purging (defaults)
                 'purge_on_post_save' => true,
-                'purge_on_post_delete' => true,
-                'purge_on_post_trash' => true,
-                'purge_on_menu_update' => true,
-                'purge_on_widget_update' => true,
-                'purge_on_theme_switch' => true,
-                'purge_on_customizer_save' => true,
-                'purge_on_plugin_activation' => true,
-                'purge_on_core_update' => true,
-                'purge_daily_scheduled' => true,
+                'purge_on_post_delete' => false,
+                'purge_on_post_trash' => false,
+                'purge_on_menu_update' => false,
+                'purge_on_widget_update' => false,
+                'purge_on_theme_switch' => false,
+                'purge_on_customizer_save' => false,
+                'purge_on_plugin_activation' => false,
+                'purge_on_core_update' => false,
+                'purge_daily_scheduled' => false,
+                // Cache layers (unchanged defaults)
                 'purge_nginx_cache' => true,
                 'purge_redis_cache' => true,
                 'purge_cloudflare_cache' => true,
                 'purge_cloudflare_apo' => true
             );
+            
+            return $sanitized;
         }
     }
 

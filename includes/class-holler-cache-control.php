@@ -48,14 +48,35 @@ class HollerCacheControl {
      * Auto-purge Cloudflare cache on content updates
      */
     private function setup_auto_purge() {
-        // Post/page is published
-        add_action('publish_post', array($this, 'purge_on_save'), 10, 1);
-        
-        // Elementor saves
-        add_action('elementor/editor/after_save', array($this, 'purge_on_elementor_save'), 10, 2);
-        
-        // Clear cache when switching themes
-        add_action('switch_theme', array($this, 'purge_cloudflare_cache'));
+        // Read the same auto-purge settings used by Admin\Tools
+        $settings = wp_parse_args(get_option('holler_cache_control_auto_purge', array()), array(
+            'purge_on_post_save' => true,
+            'purge_on_post_delete' => false,
+            'purge_on_post_trash' => false,
+            'purge_on_menu_update' => false,
+            'purge_on_widget_update' => false,
+            'purge_on_theme_switch' => false,
+            'purge_on_customizer_save' => false,
+            'purge_on_plugin_activation' => false,
+            'purge_on_core_update' => false,
+            'purge_daily_scheduled' => false
+        ));
+
+        // Post/page published (Cloudflare-only legacy path) — respect settings
+        if (!empty($settings['purge_on_post_save'])) {
+            add_action('publish_post', array($this, 'purge_on_save'), 10, 1);
+        }
+
+        // Elementor saves — opt-in via filter (default disabled)
+        $enable_elementor_autopurge = apply_filters('holler_cache_control_enable_elementor_autopurge', false);
+        if ($enable_elementor_autopurge) {
+            add_action('elementor/editor/after_save', array($this, 'purge_on_elementor_save'), 10, 2);
+        }
+
+        // Theme switch (Cloudflare-only legacy path) — respect settings
+        if (!empty($settings['purge_on_theme_switch'])) {
+            add_action('switch_theme', array($this, 'purge_cloudflare_cache'));
+        }
     }
 
     /**

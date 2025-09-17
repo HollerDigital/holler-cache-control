@@ -319,32 +319,23 @@ class Nginx {
             $details['Cache Path'] = $cache_path;
             
             try {
-                // Get cache directory size and file count using shell commands for better performance
-                $size_output = \shell_exec("du -sh " . escapeshellarg($cache_path) . " 2>/dev/null");
-                if ($size_output) {
-                    $size = trim(explode("\t", $size_output)[0]);
-                    $details['Cache Size'] = $size;
-                }
+                // Get cache directory size using PHP's native functions
+                $total_size = self::get_directory_size($cache_path);
+                $details['Cache Size'] = self::format_size($total_size);
                 
-                $files_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f | wc -l");
-                if ($files_output) {
-                    $file_count = (int)trim($files_output);
-                    $details['Cache Files'] = number_format($file_count);
-                }
+                // Get file count
+                $file_count = self::count_cache_files($cache_path);
+                $details['Cache Files'] = number_format($file_count);
                 
                 // Check permissions
                 $details['Status'] = is_writable($cache_path) ? '✅ Writable' : '⚠️ Read-only';
                 
                 // Add cache age information
-                $oldest_file_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | head -1");
-                if ($oldest_file_output) {
-                    $parts = explode(' ', trim($oldest_file_output), 2);
-                    if (count($parts) >= 2) {
-                        $oldest_time = (float)$parts[0];
-                        $age = time() - $oldest_time;
-                        if ($age > 0) {
-                            $details['Oldest Cache'] = self::format_time_ago($age);
-                        }
+                $oldest_file = self::get_oldest_cache_file($cache_path);
+                if ($oldest_file) {
+                    $age = time() - filemtime($oldest_file);
+                    if ($age > 0) {
+                        $details['Oldest Cache'] = self::format_time_ago($age);
                     }
                 }
                 
@@ -383,6 +374,52 @@ class Nginx {
             $days = floor($seconds / 86400);
             return $days . ' day' . ($days != 1 ? 's' : '') . ' ago';
         }
+    }
+
+    /**
+     * Format size in bytes to human readable format
+     */
+    private static function format_size($bytes) {
+        $units = array('B', 'KB', 'MB', 'GB', 'TB');
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= pow(1024, $pow);
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    /**
+     * Remove all contents of a directory without removing the directory itself
+     */
+    private static function remove_directory_contents($dir) {
+        if (!is_dir($dir)) {
+            return false;
+        }
+
+        $success = true;
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($files as $fileinfo) {
+            try {
+                if ($fileinfo->isDir()) {
+                    if (!rmdir($fileinfo->getRealPath())) {
+                        $success = false;
+                    }
+                } else {
+                    if (!unlink($fileinfo->getRealPath())) {
+                        $success = false;
+                    }
+                }
+            } catch (\Exception $e) {
+                error_log('Failed to remove file: ' . $e->getMessage());
+                $success = false;
+            }
+        }
+
+        return $success;
     }
     
     /**
@@ -679,10 +716,10 @@ class Nginx {
                 }
 
                 try {
-                    // Clear cache files
-                    $result = \shell_exec('rm -rf ' . escapeshellarg($path . '/*') . ' 2>&1');
+                    // Clear cache files using PHP's native functions
+                    $result = self::remove_directory_contents($path);
                     
-                    if ($result === null || strpos($result, 'Permission denied') !== false) {
+                    if (!$result) {
                         $failed_paths[] = array(
                             'path' => $path,
                             'reason' => 'Permission denied or command failed'

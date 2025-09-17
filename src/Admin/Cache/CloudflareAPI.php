@@ -372,7 +372,10 @@ class CloudflareAPI {
             
             // Get bot fight mode
             $bot_fight = $this->get_bot_fight_mode();
-            $settings['bot_fight_mode'] = $bot_fight['value'] ?? 'unknown';
+            $settings['bot_fight_mode'] = array(
+                'value' => $bot_fight['value'] ?? 'unknown',
+                'error' => $bot_fight['error'] ?? null
+            );
             
             // Get browser integrity check
             $browser_check = $this->get_browser_integrity_check();
@@ -484,18 +487,45 @@ class CloudflareAPI {
             ));
 
             if (is_wp_error($response)) {
-                return array('value' => 'unknown');
+                return array(
+                    'value' => 'unknown',
+                    'error' => $response->get_error_message()
+                );
             }
 
             $body = json_decode(wp_remote_retrieve_body($response), true);
-            if (!$body || !isset($body['success']) || !$body['success']) {
-                return array('value' => 'unknown');
+            if (!$body || !isset($body['success'])) {
+                return array(
+                    'value' => 'unknown',
+                    'error' => __('Invalid response from Cloudflare', 'holler-cache-control')
+                );
+            }
+
+            if (!$body['success']) {
+                $error = isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Unknown error', 'holler-cache-control');
+                $code = isset($body['errors'][0]['code']) ? $body['errors'][0]['code'] : 0;
+                
+                // Handle feature not enabled error
+                if ($code === 1009) {
+                    return array(
+                        'value' => 'not_available',
+                        'error' => __('Bot Fight Mode requires Bot Management to be enabled for this zone', 'holler-cache-control')
+                    );
+                }
+                
+                return array(
+                    'value' => 'unknown',
+                    'error' => $error
+                );
             }
 
             return array('value' => $body['result']['value']);
         } catch (\Exception $e) {
             error_log('Holler Cache Control - Get bot fight mode error: ' . $e->getMessage());
-            return array('value' => 'unknown');
+            return array(
+                'value' => 'unknown',
+                'error' => $e->getMessage()
+            );
         }
     }
 
