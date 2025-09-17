@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2025-09-17
+
+### Changed
+- Default auto-purge behavior now purges only on post/page updates by default
+- Legacy Cloudflare-only hooks in `includes/class-holler-cache-control.php` now respect the same auto-purge settings (off by default)
+- Elementor auto-purge is now opt-in via filter `holler_cache_control_enable_elementor_autopurge` (default disabled)
+
+### Improved
+- Consistent settings handling across `src/Admin/Tools.php` and legacy bootstrap class
+- Updated `readme.txt` Stable tag to match plugin version
+
+### Technical
+- Bumped plugin version to `1.6.2` in `holler-cache-control.php` (header and `HOLLER_CACHE_CONTROL_VERSION`)
+
 ## [1.6.1] - 2025-07-25
 
 ### Fixed
