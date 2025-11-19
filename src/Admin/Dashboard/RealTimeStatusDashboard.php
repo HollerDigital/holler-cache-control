@@ -131,9 +131,10 @@ class RealTimeStatusDashboard {
      */
     public static function handle_dashboard_data_ajax() {
         // Log that the handler was called
-        error_log('Holler Cache Control - Dashboard AJAX handler called');
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Dashboard AJAX handler called with POST: ' . print_r($_POST, true) . "\n", FILE_APPEND);
-        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: Dashboard AJAX handler called');
+        }
+
         try {
             // Basic permission check first
             if (!current_user_can('manage_options')) {
@@ -245,13 +246,17 @@ class RealTimeStatusDashboard {
             wp_send_json_success($simple_data);
             
         } catch (Exception $e) {
+            // Log detailed error server-side
             error_log('Holler Cache Control - Dashboard AJAX Error: ' . $e->getMessage());
             error_log('Holler Cache Control - Stack trace: ' . $e->getTraceAsString());
-            wp_send_json_error(['message' => 'Failed to load dashboard data: ' . $e->getMessage()]);
+            // Return generic error to user
+            wp_send_json_error(['message' => 'Failed to load dashboard data. Please check the logs for details.']);
         } catch (Error $e) {
+            // Log detailed error server-side
             error_log('Holler Cache Control - Dashboard AJAX Fatal Error: ' . $e->getMessage());
             error_log('Holler Cache Control - Stack trace: ' . $e->getTraceAsString());
-            wp_send_json_error(['message' => 'Fatal error loading dashboard data: ' . $e->getMessage()]);
+            // Return generic error to user
+            wp_send_json_error(['message' => 'A system error occurred. Please check the logs for details.']);
         }
     }
     

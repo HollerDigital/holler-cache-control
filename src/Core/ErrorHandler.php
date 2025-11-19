@@ -8,7 +8,7 @@
 namespace Holler\CacheControl\Core;
 
 class ErrorHandler {
-    
+
     /**
      * Log levels for different types of errors
      */
@@ -17,7 +17,44 @@ class ErrorHandler {
     const LOG_LEVEL_WARNING = 'warning';
     const LOG_LEVEL_ERROR = 'error';
     const LOG_LEVEL_CRITICAL = 'critical';
-    
+
+    /**
+     * Calculate directory size and file count using PHP native functions
+     *
+     * @param string $path Directory path
+     * @return array Array with 'size_bytes' and 'files' keys
+     */
+    private static function calculate_directory_stats($path) {
+        $size_bytes = 0;
+        $files = 0;
+
+        try {
+            if (!is_dir($path)) {
+                return ['size_bytes' => 0, 'files' => 0];
+            }
+
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $size_bytes += $file->getSize();
+                    $files++;
+                }
+            }
+        } catch (\Exception $e) {
+            // If we can't read the directory, return zeros
+            return ['size_bytes' => 0, 'files' => 0];
+        }
+
+        return [
+            'size_bytes' => $size_bytes,
+            'files' => $files
+        ];
+    }
+
     /**
      * Log an error with context and proper formatting
      *
@@ -146,18 +183,12 @@ class ErrorHandler {
                     $validation['exists'] = true;
                     $validation['readable'] = is_readable($path);
                     $validation['writable'] = is_writable($path);
-                    
+
                     if ($validation['readable']) {
-                        // Get cache statistics
-                        $size_output = \shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null");
-                        if ($size_output) {
-                            $validation['size'] = (int) explode("\t", $size_output)[0];
-                        }
-                        
-                        $files_output = \shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
-                        if ($files_output) {
-                            $validation['files'] = (int) trim($files_output);
-                        }
+                        // Get cache statistics using PHP native functions
+                        $dir_stats = self::calculate_directory_stats($path);
+                        $validation['size'] = $dir_stats['size_bytes'];
+                        $validation['files'] = $dir_stats['files'];
                     } else {
                         $validation['errors'][] = 'Path is not readable';
                     }

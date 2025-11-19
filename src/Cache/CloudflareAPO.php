@@ -218,10 +218,6 @@ class CloudflareAPO extends Cloudflare {
             $disable_body = \json_decode(\wp_remote_retrieve_body($disable_response), true);
             self::log_error('Disable APO Response: ' . print_r($disable_body, true));
 
-            // Wait a moment for the setting to propagate
-            self::log_error('Waiting for APO disable to propagate');
-            \sleep(2);
-
             // Re-enable APO with original settings
             self::log_error('Re-enabling APO');
             $enable_response = \wp_remote_request(

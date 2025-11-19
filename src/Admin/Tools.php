@@ -351,10 +351,11 @@ class Tools {
         
         // Simple Cloudflare Settings Check Handler
         add_action('wp_ajax_cloudflare_settings_check', array($this, 'handle_simple_cloudflare_check'));
-        
+
         // Debug: Log AJAX handler registration
-        error_log('Holler Cache Control: Registered AJAX handlers');
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Registered AJAX handlers' . "\n", FILE_APPEND);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: Registered AJAX handlers');
+        }
     }
 
     /**
@@ -482,13 +483,11 @@ class Tools {
             // Clear PHP OPcache (always enabled)
             if (function_exists('opcache_reset')) {
                 opcache_reset();
-                sleep(5);
             }
 
             // Clear Redis Object Cache
             if (!empty($layer_settings['purge_redis_cache'])) {
                 $redis_result = \Holler\CacheControl\Admin\Cache\Redis::purge_cache();
-                sleep(5);
                 
                 if ($redis_result['success']) {
                     $successes[] = 'redis';
@@ -503,8 +502,7 @@ class Tools {
             // Clear Nginx Page Cache
             if (!empty($layer_settings['purge_nginx_cache'])) {
                 $nginx_result = \Holler\CacheControl\Admin\Cache\Nginx::purge_cache();
-                sleep(5);
-                
+
                 if ($nginx_result['success']) {
                     $successes[] = 'nginx';
                 } else {
@@ -518,8 +516,7 @@ class Tools {
             // Clear Cloudflare Cache
             if (!empty($layer_settings['purge_cloudflare_cache'])) {
                 $cloudflare_result = \Holler\CacheControl\Admin\Cache\Cloudflare::purge_cache();
-                sleep(5);
-                
+
                 if ($cloudflare_result['success']) {
                     $successes[] = 'cloudflare';
                 } else {
@@ -964,9 +961,11 @@ class Tools {
     }
     
     $redirect_url = admin_url('options-general.php?page=settings_page_holler-cache-control&tab=' . $current_tab);
-    
+
     // Debug: Log the cache action being processed
-    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Processing cache_action: ' . $cache_action . ' on tab: ' . $current_tab . "\n", FILE_APPEND);
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Holler Cache Control: Processing cache_action: ' . $cache_action . ' on tab: ' . $current_tab);
+    }
 
         switch ($cache_action) {
             case 'purge_all':
@@ -1179,10 +1178,11 @@ class Tools {
      * Handle Cloudflare settings check and configuration
      */
     private function handle_check_cloudflare_settings() {
-    // Log the action
-    error_log('Holler Cache Control: Starting Cloudflare settings check and configuration');
-    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - handle_check_cloudflare_settings() called' . "\n", FILE_APPEND);
-        
+        // Log the action
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: Starting Cloudflare settings check and configuration');
+        }
+
         try {
             // Use the full check and configure settings method that actually applies optimizations
             $result = \Holler\CacheControl\Admin\Cache\Cloudflare::check_and_configure_settings();
@@ -1286,9 +1286,10 @@ class Tools {
      */
     public function handle_check_cloudflare_settings_ajax() {
         // Debug: Log that AJAX handler was called
-        error_log('Holler Cache Control: handle_check_cloudflare_settings_ajax() called');
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - AJAX handler called: handle_check_cloudflare_settings_ajax' . "\n", FILE_APPEND);
-        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: handle_check_cloudflare_settings_ajax() called');
+        }
+
         // Verify nonce
         if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control')) {
             wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'holler-cache-control')));
@@ -1384,9 +1385,10 @@ class Tools {
      */
     public function handle_cloudflare_check_settings_ajax() {
         // Debug: Log that AJAX handler was called
-        error_log('Holler Cache Control: handle_cloudflare_check_settings_ajax() called');
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - AJAX handler called: handle_cloudflare_check_settings_ajax' . "\n", FILE_APPEND);
-        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: handle_cloudflare_check_settings_ajax() called');
+        }
+
         // Verify nonce
         if (!wp_verify_nonce($_POST['nonce'], 'holler_cache_control')) {
             wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'holler-cache-control')));
@@ -1481,8 +1483,9 @@ class Tools {
      * Test AJAX Handler
      */
     public function test_ajax_handler() {
-        error_log('Test AJAX handler called');
-        file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Test AJAX handler called' . "\n", FILE_APPEND);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Holler Cache Control: Test AJAX handler called');
+        }
         wp_send_json_success(array('message' => 'Test successful!'));
     }
 

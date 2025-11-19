@@ -417,9 +417,6 @@ class Cloudflare {
                 throw new \Exception($zone_result['message']);
             }
 
-            // Wait for settings to propagate
-            sleep(10);
-
             $credentials = self::get_credentials();
             if (!$credentials['valid']) {
                 throw new \Exception(__('Cloudflare credentials not configured', 'holler-cache-control'));
@@ -460,9 +457,9 @@ class Cloudflare {
             if (empty($body) || !isset($body['success']) || !$body['success']) {
                 $error_msg = isset($body['errors'][0]['message']) ? $body['errors'][0]['message'] : __('Failed to enable APO', 'holler-cache-control');
                 
-                // If we still get the proxy error, try one more time after a longer wait
+                // If we still get the proxy error, try one more time after a brief wait
                 if (isset($body['errors'][0]['message']) && strpos($body['errors'][0]['message'], 'proxied through Cloudflare') !== false) {
-                    sleep(20);
+                    sleep(2);
                     
                     $response = wp_remote_post(
                         "https://api.cloudflare.com/client/v4/zones/{$credentials['zone_id']}/settings/automatic_platform_optimization",

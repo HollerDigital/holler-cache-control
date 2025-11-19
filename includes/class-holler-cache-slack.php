@@ -175,28 +175,24 @@ class Slack {
             if (!$result['success']) {
                 $errors[] = "PHP OPcache: " . $result['message'];
             }
-            sleep(5); // Wait 5 seconds
-            
+
             // 2. Redis Object Cache
             $result = \Holler\CacheControl\Admin\Cache\Redis::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Redis Object Cache: " . $result['message'];
             }
-            sleep(5); // Wait 5 seconds
-            
+
             // 3. Redis Page Cache (Nginx)
             $result = \Holler\CacheControl\Admin\Cache\Nginx::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Page Cache: " . $result['message'];
             }
-            sleep(5); // Wait 5 seconds
-            
+
             // 4. Cloudflare
             $result = \Holler\CacheControl\Admin\Cache\Cloudflare::purge_cache();
             if (!$result['success']) {
                 $errors[] = "Cloudflare: " . $result['message'];
             }
-            sleep(5); // Wait 5 seconds
 
             // 5. Cloudflare APO
             $result = \Holler\CacheControl\Admin\Cache\CloudflareAPO::purge_cache();

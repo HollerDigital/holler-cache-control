@@ -13,6 +13,57 @@ use function Holler\CacheControl\{get_nginx_cache_method, get_nginx_purge_method
 
 class Nginx {
     /**
+     * Calculate directory size and file count using PHP native functions
+     *
+     * @param string $path Directory path
+     * @return array Array with 'size_bytes', 'size_human', and 'files' keys
+     */
+    private static function calculate_directory_stats($path) {
+        $size_bytes = 0;
+        $files = 0;
+
+        try {
+            if (!is_dir($path)) {
+                return ['size_bytes' => 0, 'size_human' => '0B', 'files' => 0];
+            }
+
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $size_bytes += $file->getSize();
+                    $files++;
+                }
+            }
+        } catch (\Exception $e) {
+            // If we can't read the directory, return zeros
+            error_log('Holler Cache Control: Error calculating directory stats: ' . $e->getMessage());
+            return ['size_bytes' => 0, 'size_human' => '0B', 'files' => 0];
+        }
+
+        // Convert bytes to human-readable format
+        $units = ['B', 'K', 'M', 'G', 'T'];
+        $size_human = $size_bytes;
+        $unit_index = 0;
+
+        while ($size_human >= 1024 && $unit_index < count($units) - 1) {
+            $size_human /= 1024;
+            $unit_index++;
+        }
+
+        $size_human = round($size_human, 1) . $units[$unit_index];
+
+        return [
+            'size_bytes' => $size_bytes,
+            'size_human' => $size_human,
+            'files' => $files
+        ];
+    }
+
+    /**
      * Get status of Nginx cache
      *
      * @return array Status information
@@ -977,20 +1028,15 @@ class Nginx {
                     return false;
                 }
 
-                // Get cache size
-                $size_output = \shell_exec("du -sh " . escapeshellarg($cache_path) . " 2>/dev/null");
-                $size = trim(explode("\t", $size_output)[0]);
-
-                // Get number of files
-                $files_output = \shell_exec("find " . escapeshellarg($cache_path) . " -type f | wc -l");
-                $files = (int)trim($files_output);
+                // Get cache size and file count using PHP native functions
+                $dir_stats = self::calculate_directory_stats($cache_path);
 
                 // Get cache stats from nginx status
                 $stats = self::get_nginx_stats();
-                
+
                 $cache_info = array_merge($cache_info, array(
-                    'size' => $size,
-                    'files' => $files,
+                    'size' => $dir_stats['size_human'],
+                    'files' => $dir_stats['files'],
                     'directory' => $cache_path
                 ));
 

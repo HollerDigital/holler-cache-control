@@ -10,7 +10,44 @@ namespace Holler\CacheControl\Core;
 use Holler\CacheControl\Core\ErrorHandler;
 
 class CachePathDetector {
-    
+
+    /**
+     * Calculate directory size and file count using PHP native functions
+     *
+     * @param string $path Directory path
+     * @return array Array with 'size_bytes' and 'files' keys
+     */
+    private static function calculate_directory_stats($path) {
+        $size_bytes = 0;
+        $files = 0;
+
+        try {
+            if (!is_dir($path)) {
+                return ['size_bytes' => 0, 'files' => 0];
+            }
+
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $size_bytes += $file->getSize();
+                    $files++;
+                }
+            }
+        } catch (\Exception $e) {
+            // If we can't read the directory, return zeros
+            return ['size_bytes' => 0, 'files' => 0];
+        }
+
+        return [
+            'size_bytes' => $size_bytes,
+            'files' => $files
+        ];
+    }
+
     /**
      * Known cache path patterns for different hosting environments
      */
@@ -244,19 +281,12 @@ class CachePathDetector {
             }
             
             if ($analysis['readable']) {
-                // Get cache size
-                $size_output = \shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null");
-                if ($size_output && preg_match('/^(\d+)/', $size_output, $matches)) {
-                    $analysis['size_bytes'] = (int) $matches[1];
-                    $analysis['size_human'] = size_format($analysis['size_bytes']);
-                }
-                
-                // Get file count
-                $files_output = \shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
-                if ($files_output) {
-                    $analysis['file_count'] = (int) trim($files_output);
-                }
-                
+                // Get cache size and file count using PHP native functions
+                $dir_stats = self::calculate_directory_stats($path);
+                $analysis['size_bytes'] = $dir_stats['size_bytes'];
+                $analysis['size_human'] = size_format($analysis['size_bytes']);
+                $analysis['file_count'] = $dir_stats['files'];
+
                 // Get last modified time
                 $mtime = filemtime($path);
                 if ($mtime !== false) {

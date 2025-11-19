@@ -9,6 +9,44 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Check rate limit for AJAX requests
+ *
+ * @param string $action Action name
+ * @param int $max_requests Maximum requests allowed
+ * @param int $time_window Time window in seconds
+ * @return bool True if rate limit exceeded
+ */
+function check_rate_limit($action, $max_requests = 10, $time_window = 60) {
+    $user_id = get_current_user_id();
+    $transient_key = 'holler_rate_limit_' . $action . '_' . $user_id;
+
+    $request_log = get_transient($transient_key);
+
+    if ($request_log === false) {
+        // First request in this window
+        set_transient($transient_key, array(time()), $time_window);
+        return false;
+    }
+
+    // Filter out old requests outside the time window
+    $current_time = time();
+    $request_log = array_filter($request_log, function($timestamp) use ($current_time, $time_window) {
+        return ($current_time - $timestamp) < $time_window;
+    });
+
+    // Check if limit exceeded
+    if (count($request_log) >= $max_requests) {
+        return true;
+    }
+
+    // Add current request
+    $request_log[] = $current_time;
+    set_transient($transient_key, $request_log, $time_window);
+
+    return false;
+}
+
 // Register the AJAX handlers
 add_action('wp_ajax_cloudflare_simple_check', 'handle_cloudflare_simple_check');
 add_action('wp_ajax_cloudflare_load_settings', 'handle_cloudflare_load_settings');
@@ -18,15 +56,22 @@ add_action('wp_ajax_cloudflare_update_multiple', 'handle_cloudflare_update_multi
 
 function handle_cloudflare_simple_check() {
     // Debug logging
-    error_log('Standalone Cloudflare AJAX handler called');
-    file_put_contents('/tmp/holler_debug.log', date('Y-m-d H:i:s') . ' - Standalone Cloudflare AJAX handler called' . "\n", FILE_APPEND);
-    
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Holler Cache Control: Cloudflare AJAX handler called');
+    }
+
     // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_simple')) {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'cloudflare_simple')) {
         wp_send_json_error(array('message' => 'Security check failed'));
         return;
     }
-    
+
+    // Check rate limit (10 requests per minute)
+    if (check_rate_limit('cloudflare_simple_check', 10, 60)) {
+        wp_send_json_error(array('message' => 'Rate limit exceeded. Please wait a moment and try again.'));
+        return;
+    }
+
     // Check permissions
     if (!current_user_can('manage_options')) {
         wp_send_json_error(array('message' => 'Insufficient permissions'));
@@ -113,7 +158,7 @@ function handle_cloudflare_simple_check() {
     } catch (Exception $e) {
         error_log('Cloudflare check error: ' . $e->getMessage());
         wp_send_json_error(array(
-            'message' => 'Error: ' . $e->getMessage()
+            'message' => 'An error occurred while checking Cloudflare settings. Please check the logs for details.'
         ));
     }
 }
@@ -123,7 +168,7 @@ function handle_cloudflare_simple_check() {
  */
 function handle_cloudflare_load_settings() {
     // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
         wp_send_json_error(array('message' => 'Security check failed'));
         return;
     }
@@ -148,7 +193,8 @@ function handle_cloudflare_load_settings() {
         ));
         
     } catch (Exception $e) {
-        wp_send_json_error(array('message' => 'Error: ' . $e->getMessage()));
+        error_log('Cloudflare load settings error: ' . $e->getMessage());
+        wp_send_json_error(array('message' => 'Failed to load settings. Please check the logs for details.'));
     }
 }
 
@@ -157,20 +203,32 @@ function handle_cloudflare_load_settings() {
  */
 function handle_cloudflare_update_setting() {
     // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
         wp_send_json_error(array('message' => 'Security check failed'));
         return;
     }
-    
+
+    // Check rate limit (30 updates per minute)
+    if (check_rate_limit('cloudflare_update_setting', 30, 60)) {
+        wp_send_json_error(array('message' => 'Rate limit exceeded. Please wait a moment and try again.'));
+        return;
+    }
+
     // Check permissions
     if (!current_user_can('manage_options')) {
         wp_send_json_error(array('message' => 'Insufficient permissions'));
         return;
     }
-    
+
+    // Validate input parameters
+    if (!isset($_POST['setting']) || !isset($_POST['value'])) {
+        wp_send_json_error(array('message' => 'Missing required parameters'));
+        return;
+    }
+
     $setting = sanitize_text_field($_POST['setting']);
     $value = sanitize_text_field($_POST['value']);
-    
+
     try {
         $result = update_cloudflare_setting($setting, $value);
         
@@ -183,7 +241,8 @@ function handle_cloudflare_update_setting() {
         }
         
     } catch (Exception $e) {
-        wp_send_json_error(array('message' => 'Error: ' . $e->getMessage()));
+        error_log('Cloudflare update setting error: ' . $e->getMessage());
+        wp_send_json_error(array('message' => 'Failed to update setting. Please check the logs for details.'));
     }
 }
 
@@ -192,19 +251,31 @@ function handle_cloudflare_update_setting() {
  */
 function handle_cloudflare_update_minify() {
     // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
         wp_send_json_error(array('message' => 'Security check failed'));
         return;
     }
-    
+
+    // Check rate limit (20 updates per minute)
+    if (check_rate_limit('cloudflare_update_minify', 20, 60)) {
+        wp_send_json_error(array('message' => 'Rate limit exceeded. Please wait a moment and try again.'));
+        return;
+    }
+
     // Check permissions
     if (!current_user_can('manage_options')) {
         wp_send_json_error(array('message' => 'Insufficient permissions'));
         return;
     }
-    
+
+    // Validate settings input
+    if (!isset($_POST['settings']) || !is_array($_POST['settings'])) {
+        wp_send_json_error(array('message' => 'Invalid settings data'));
+        return;
+    }
+
     $settings = $_POST['settings'];
-    
+
     try {
         $minify_value = array(
             'html' => isset($settings['html']) ? (bool)$settings['html'] : false,
@@ -223,7 +294,8 @@ function handle_cloudflare_update_minify() {
         }
         
     } catch (Exception $e) {
-        wp_send_json_error(array('message' => 'Error: ' . $e->getMessage()));
+        error_log('Cloudflare update minify error: ' . $e->getMessage());
+        wp_send_json_error(array('message' => 'Failed to update minify settings. Please check the logs for details.'));
     }
 }
 
@@ -232,25 +304,42 @@ function handle_cloudflare_update_minify() {
  */
 function handle_cloudflare_update_multiple() {
     // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'cloudflare_settings')) {
         wp_send_json_error(array('message' => 'Security check failed'));
         return;
     }
-    
+
+    // Check rate limit (10 bulk updates per minute)
+    if (check_rate_limit('cloudflare_update_multiple', 10, 60)) {
+        wp_send_json_error(array('message' => 'Rate limit exceeded. Please wait a moment and try again.'));
+        return;
+    }
+
     // Check permissions
     if (!current_user_can('manage_options')) {
         wp_send_json_error(array('message' => 'Insufficient permissions'));
         return;
     }
-    
+
+    // Validate settings input
+    if (!isset($_POST['settings']) || !is_array($_POST['settings'])) {
+        wp_send_json_error(array('message' => 'Invalid settings data'));
+        return;
+    }
+
     $settings = $_POST['settings'];
-    
+
     try {
         $success_count = 0;
         $total_count = count($settings);
-        
+
         foreach ($settings as $setting_data) {
-            $setting = $setting_data['setting'];
+            // Validate each setting item
+            if (!is_array($setting_data) || !isset($setting_data['setting']) || !isset($setting_data['value'])) {
+                continue;
+            }
+
+            $setting = sanitize_text_field($setting_data['setting']);
             $value = $setting_data['value'];
             
             // Handle minify settings specially
@@ -290,7 +379,8 @@ function handle_cloudflare_update_multiple() {
         }
         
     } catch (Exception $e) {
-        wp_send_json_error(array('message' => 'Error: ' . $e->getMessage()));
+        error_log('Cloudflare update multiple error: ' . $e->getMessage());
+        wp_send_json_error(array('message' => 'Failed to update settings. Please check the logs for details.'));
     }
 }
 
