@@ -30,7 +30,7 @@ if (!defined('WPINC')) {
 /**
  * Currently plugin version.
  */
-define('HOLLER_CACHE_CONTROL_VERSION', '1.6.2');
+define('HOLLER_CACHE_CONTROL_VERSION', '1.6.4');
 
 /**
  * Plugin directory
