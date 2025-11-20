@@ -3,7 +3,7 @@
  * Plugin Name:       Holler Cache Control
  * Plugin URI:        https://github.com/HollerDigital/holler-cache-control
  * Description:       Control Nginx FastCGI Cache, Redis Object Cache, and Cloudflare Cache from the WordPress admin. Designed for GridPane Hosted Sites
- * Version:           1.6.2
+ * Version:           1.6.4
  * Author:           Holler Digital
  * Author URI:       https://hollerdigital.com/
  * License:          GPL-2.0+
